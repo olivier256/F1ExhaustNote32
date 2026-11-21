@@ -1,0 +1,60 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"editor.formatOnSave": true,
+		"C_Cpp.clang_format_style": "file",
+		"files.associations": {
+			"*.h": "c"
+		},
+		"C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+		"cmake.configureSettings": {
+			"CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+		}
+	},
+	"tasks": {
+		"version": "2.0.0",
+		"tasks": [
+			{
+				"label": "Compiler",
+				"type": "shell",
+				"command": "make",
+				"group": {
+					"kind": "build",
+					"isDefault": true
+				},
+				"problemMatcher": [
+					"$gcc"
+				]
+			},
+			{
+				"label": "Lancer la démo",
+				"type": "shell",
+				"command": "make run",
+				"problemMatcher": []
+			},
+			{
+				"label": "Lancer la démo avec VDP_STATS",
+				"type": "shell",
+				"command": "make stats",
+				"problemMatcher": []
+			},
+			{
+				"label": "Tests",
+				"type": "shell",
+				"command": "make test",
+				"group": "test",
+				"problemMatcher": []
+			}
+		]
+	},
+	"extensions": {
+		"recommendations": [
+			"ms-vscode.cpptools",
+			"ms-vscode.cmake-tools"
+		]
+	}
+}
