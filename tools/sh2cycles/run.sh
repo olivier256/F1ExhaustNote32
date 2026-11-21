@@ -12,19 +12,32 @@
 #    vérifie que le code SH2 dessine les mêmes pixels, et ajuste les
 #    coûts unitaires (fit.py).
 #
-# Il faut (Linux ; qemu en mode utilisateur n'existe pas sous macOS) :
-# - une chaîne sh-elf (binutils + gcc, avec libgcc) : SH_ELF=préfixe ;
-# - qemu-sh4eb construit avec --enable-plugins, et son qemu-plugin.h ;
+# Il faut (Linux ; qemu en mode utilisateur n'existe pas sous macOS, où
+# l'on passe par tools/sh2cycles/docker.sh) :
+# - la chaîne sh-elf et qemu-sh4eb avec les greffons, construits par
+#   build-tools.sh dans $PREFIX (par défaut ~/opt) ;
 # - glib (en-têtes), Python 3 et numpy.
-# Voir tools/sh2cycles/README.md pour construire la chaîne et qemu.
 #
 # Usage : tools/sh2cycles/run.sh   (depuis la racine du dépôt)
 # =========================================================================
 set -e
 
-SH_ELF=${SH_ELF:-/opt/sh-elf/bin/sh-elf-}
-QEMU=${QEMU:-/opt/qemu/bin/qemu-sh4eb}
-QEMU_INCLUDE=${QEMU_INCLUDE:-/opt/qemu/include}
+if [ "$(uname -s)" != "Linux" ]; then
+  echo "run.sh : Linux uniquement. Sur Mac : tools/sh2cycles/docker.sh"
+  exit 1
+fi
+
+PREFIX=${PREFIX:-$HOME/opt}
+SH_ELF=${SH_ELF:-$PREFIX/sh-elf/bin/sh-elf-}
+QEMU=${QEMU:-$PREFIX/qemu/bin/qemu-sh4eb}
+QEMU_INCLUDE=${QEMU_INCLUDE:-$PREFIX/qemu/include}
+for tool in "${SH_ELF}gcc" "$QEMU"; do
+  if [ ! -x "$tool" ]; then
+    echo "run.sh : $tool introuvable. Construire les outils :"
+    echo "  tools/sh2cycles/build-tools.sh   (ou PREFIX=... si ailleurs)"
+    exit 1
+  fi
+done
 OUT=build/sh2cycles
 T=tools/sh2cycles
 mkdir -p "$OUT"

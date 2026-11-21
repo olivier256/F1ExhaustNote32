@@ -169,3 +169,38 @@ pire écritures comprises : environ 30 images/s, pas 60. Le temps passe
 autour des boucles de copie (segments, morceaux de tile, décalages
 variables et divisions, absents du SH2).
 ```
+
+---
+
+Banc sh2cycles : sur Mac par Docker, outils dans ~/opt
+
+**Ce que fait cette version** :
+- `build-tools.sh` installe dans `$PREFIX` (par défaut `~/opt`) : plus
+  besoin de `sudo`, ni de `/opt`. Il refuse de tourner hors de Linux avec
+  un message clair (qemu en mode utilisateur n'existe pas sous macOS),
+  ne retélécharge pas les sources déjà présentes, et configure qemu avec
+  le Python du système (correction : avec un autre Python, qemu ne
+  trouvait pas distlib).
+- `run.sh` cherche les outils dans `$PREFIX` (même défaut) et dit quoi
+  faire s'ils manquent ; il refuse aussi de tourner hors de Linux.
+- `Dockerfile` et `docker.sh` : le banc sur Mac, dans un conteneur Ubuntu
+  (Docker Desktop, OrbStack ou colima). L'image contient la chaîne
+  `sh-elf` et qemu (environ 40 minutes à construire, une seule fois) ;
+  le dépôt est monté dans le conteneur, les résultats arrivent dans
+  `build/sh2cycles`.
+
+**Ce qui reste pour plus tard** :
+- inchangé : réécrire le C pour le SH2 en mesurant chaque étape.
+
+Message de commit proposé :
+
+```
+Banc sh2cycles : sur Mac par Docker, outils dans ~/opt
+
+build-tools.sh installe dans $PREFIX (~/opt par défaut, sans sudo),
+refuse de tourner hors de Linux et configure qemu avec le Python du
+système. run.sh cherche les outils au même endroit.
+
+Dockerfile et docker.sh : le banc dans un conteneur Ubuntu, depuis un
+Mac, où qemu en mode utilisateur n'existe pas.
+```

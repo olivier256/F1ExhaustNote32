@@ -39,36 +39,39 @@ ceux d'un modèle, plus fin que `cost.h`, mais pas d'une 32X réelle.
 
 ## Lancer
 
-Sous Linux (qemu en mode utilisateur n'existe pas sous macOS : VM,
-Docker, ou une machine Linux), depuis la racine du dépôt :
+**Sur Mac** : qemu en mode utilisateur n'existe que sous Linux. Le banc
+tourne donc dans un conteneur Linux (Docker Desktop, OrbStack ou colima) :
 
 ```sh
+tools/sh2cycles/docker.sh
+```
+
+La première fois, l'image est construite : chaîne `sh-elf` et qemu,
+environ 40 minutes. Ensuite, le banc prend quelques secondes. Les
+résultats sont dans `build/sh2cycles`.
+
+**Sous Linux**, directement :
+
+```sh
+sudo apt install build-essential curl xz-utils libgmp-dev libmpfr-dev \
+     libmpc-dev ninja-build libglib2.0-dev pkg-config python3-venv \
+     python3-distlib python3-numpy flex bison texinfo
+tools/sh2cycles/build-tools.sh     # une fois : ~/opt/sh-elf et ~/opt/qemu
 tools/sh2cycles/run.sh
 ```
 
-Variables : `SH_ELF` (préfixe de la chaîne, par défaut
-`/opt/sh-elf/bin/sh-elf-`), `QEMU` (par défaut `/opt/qemu/bin/qemu-sh4eb`),
-`QEMU_INCLUDE` (dossier de `qemu-plugin.h`, par défaut
-`/opt/qemu/include`).
-
-## Construire la chaîne sh-elf et qemu
-
 Ubuntu fournit `gcc-sh4-linux-gnu`, mais il ne sait produire que du SH4,
-et son qemu n'a pas les greffons. Il faut donc les construire (environ
-40 minutes sur 2 cœurs) ; `build-tools.sh` le fait :
-
-```sh
-sudo apt install build-essential libgmp-dev libmpfr-dev libmpc-dev \
-     ninja-build libglib2.0-dev pkg-config python3-venv flex bison texinfo
-sudo tools/sh2cycles/build-tools.sh     # installe dans /opt/sh-elf et /opt/qemu
-```
+et son qemu n'a pas les greffons : d'où `build-tools.sh`. Variables :
+`PREFIX` (dossier des outils, `~/opt` par défaut), ou, une par une,
+`SH_ELF` (préfixe de la chaîne), `QEMU` et `QEMU_INCLUDE` (dossier de
+`qemu-plugin.h`).
 
 La même chaîne `sh-elf` servira à compiler SuperVDP pour la vraie 32X.
 
 ## Profil : où passe le temps
 
 ```sh
-/opt/qemu/bin/qemu-sh4eb -plugin build/sh2cycles/libsh2cycles.so,profile=on \
+~/opt/qemu/bin/qemu-sh4eb -plugin build/sh2cycles/libsh2cycles.so,profile=on \
     build/sh2cycles/bench_master.elf >/dev/null 2>profil.txt
 ```
 
