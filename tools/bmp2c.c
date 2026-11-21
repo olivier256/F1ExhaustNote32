@@ -405,8 +405,35 @@ static void writeOutput(const char *base, const char *manifest) {
             fprintf(c, "/* %s */\nstatic const uint16_t %s_cells[%d * %d] = {",
                     a->path, a->name, w, hh);
             writeWords(c, a->cells, (size_t)w * hh);
-            fprintf(c, "};\n\nconst Tilemap asset_%s = {%d, %d, %s_cells};\n\n",
-                    a->name, w, hh, a->name);
+            fprintf(c, "};\n\n");
+
+            /* Changements de classe, ligne par ligne (assets_types.h) */
+            const int bytes = CHANGE_BYTES(w), lines = hh * TILE_SIZE;
+            uint8_t *changes = calloc((size_t)bytes * lines, 1);
+            if (changes == NULL)
+                fail("mémoire insuffisante pour %s", a->path);
+            for (int y = 0; y < lines; y++) {
+                const uint16_t *row = a->cells + (y / TILE_SIZE) * w;
+                const int shift = (y % TILE_SIZE) * ROW_CLASS_BITS;
+                uint8_t *bits = changes + (size_t)y * bytes;
+                for (int col = 0; col < w + CHANGE_EXTRA_COLUMNS; col++) {
+                    const int here = col % w, before = (col + w - 1) % w;
+                    const uint32_t c1 =
+                        rowClasses(tiles + (size_t)row[here] * TILE_PIXELS);
+                    const uint32_t c0 =
+                        rowClasses(tiles + (size_t)row[before] * TILE_PIXELS);
+                    if (((c1 >> shift) ^ (c0 >> shift)) & ROW_CLASS_MASK)
+                        bits[col / 8] |= (uint8_t)(0x80 >> (col % 8));
+                }
+            }
+            fprintf(c, "static const uint8_t %s_changes[%d * %d] = {", a->name,
+                    lines, bytes);
+            writeBytes(c, changes, (size_t)bytes * lines);
+            free(changes);
+            fprintf(c,
+                    "};\n\nconst Tilemap asset_%s = {%d, %d, %s_cells, "
+                    "%s_changes, %d};\n\n",
+                    a->name, w, hh, a->name, a->name, bytes);
         } else {
             int w = a->image.width, hh = a->image.height;
             fprintf(c,

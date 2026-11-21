@@ -60,11 +60,26 @@ static inline const uint8_t *tile_row(const Tileset *tiles, unsigned tile,
 
 /* Plan : grille de widthTiles x heightTiles numéros de tile (16 bits),
    ligne par ligne. Dimensions quelconques : le plan boucle dans les deux
-   directions. */
+   directions.
+
+   'classChanges' : pour chaque ligne de pixels du plan, les colonnes de
+   tile où la classe de la ligne change (voir TileRowClass), un bit par
+   colonne : le bit de la colonne c est mis si sa classe diffère de celle
+   de la colonne c - 1 (la colonne 0 est comparée à la dernière). Les bits
+   vont du poids fort au poids faible, octet après octet. Les colonnes sont
+   suivies de CHANGE_EXTRA_COLUMNS colonnes répétées depuis le début de la
+   rangée, pour qu'une ligne d'écran se lise d'un seul tenant, et d'un
+   octet de garde. changeBytes octets par ligne (CHANGE_BYTES). */
+#define CHANGE_EXTRA_COLUMNS 22 /* une ligne d'écran : 322 pixels */
+#define CHANGE_BYTES(widthTiles)                                               \
+    (((widthTiles) + CHANGE_EXTRA_COLUMNS + 7) / 8 + 1)
+
 typedef struct {
     uint16_t widthTiles;
     uint16_t heightTiles;
     const uint16_t *cells;
+    const uint8_t *classChanges; /* heightTiles * TILE_SIZE lignes */
+    uint16_t changeBytes;        /* octets par ligne, CHANGE_BYTES() */
 } Tilemap;
 
 /* Sprite : width x height pixels, ligne par ligne (pas encore utilisé

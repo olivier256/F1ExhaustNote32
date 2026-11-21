@@ -8,7 +8,8 @@
    Principe
    --------
    On parcourt la ligne du plan A tile par tile. bmp2c a donné la classe
-   de chaque ligne de tile (assets_types.h) :
+   de chaque ligne de tile, et pour chaque ligne de pixels des plans les
+   colonnes où cette classe change (assets_types.h) :
    - transparente : l'écran montre le plan B, qu'on copie ;
    - opaque       : l'écran montre le plan A, qu'on copie ; B n'est pas lu ;
    - mixte        : on fusionne pixel par pixel (A si non nul, sinon B).
@@ -24,8 +25,9 @@
    la destination est toujours paire. C'est la source qui hérite de la
    parité du défilement :
    - source paire : chaque mot est lu d'un coup (MOV.W) dans la tile ;
-   - source impaire : deux pixels lus séparément (deux MOV.B, depuis le
-     cache), assemblés en un mot.
+   - source impaire : on lit des mots alignés, et chaque mot écrit réunit
+     l'octet de poids faible d'un mot lu et l'octet de poids fort du
+     suivant (quatre MOV.L pour une tile entière).
    Tiles et plans ont une largeur paire : la parité de la source ne change
    pas le long de la ligne. La décision est prise une fois par ligne et par
    plan (copyA, copyB), pas pour chaque segment.
@@ -45,6 +47,9 @@
    - classe d'une ligne de tile lue avec des masques préparés une fois par
      ligne (classMasks), sans décalage ;
    - positions en non signé : x >> 4 devient deux SHLR2 ;
+   - segments formés depuis les changements de classe (un bit par colonne
+     de tile) : 32 colonnes lues à la fois, la boucle ne s'arrête que sur
+     les changements et finit après le dernier ;
    - tiles parcourues par un pointeur sur leur numéro dans le plan, qui
      revient au début de la rangée au bout du plan ;
    - tiles entières copiées par une suite de 8 mots, sans boucle.
@@ -137,6 +142,7 @@ typedef struct {
     const uint8_t *tileLine; /* ligne voulue dans la tile 0 */
     unsigned rowInTile;      /* numéro de cette ligne dans la tile */
     unsigned width;          /* largeur du plan en pixels */
+    const uint8_t *changes;  /* changements de classe de la ligne */
 } PlaneRow;
 
 static void planeRowInit(PlaneRow *pr, const Tilemap *map, const Tileset *tiles,
@@ -147,6 +153,7 @@ static void planeRowInit(PlaneRow *pr, const Tilemap *map, const Tileset *tiles,
     pr->rowInTile = y & (TILE_SIZE - 1);
     pr->tileLine = tile_row(tiles, 0, pr->rowInTile);
     pr->width = (unsigned)map->widthTiles << TILE_SHIFT;
+    pr->changes = map->classChanges + y * map->changeBytes;
 }
 
 /* Premier pixel de la tile dont 'cell' donne le numéro, sur la ligne */
@@ -233,51 +240,55 @@ static inline uint8_t copyTileOdd(Dest d, const uint8_t *src, uint8_t carry) {
 }
 
 /* Source impaire : chaque mot écrit réunit un pixel de colonne impaire et
-   le suivant. Le dernier pixel d'une tile (colonne 15) va donc avec le
-   premier de la tile suivante : il est gardé de côté ('carry'). */
-COLD_CODE static void copySpanOdd(Dest d, const PlaneRow *pr, unsigned x,
-                                  unsigned n, ComposeCost *cost) {
+   le suivant. On lit le plan par mots alignés (MOV.W à une adresse
+   paire) : (x - 1, x), (x + 1, x + 2)... Le mot écrit k réunit l'octet
+   de poids faible du mot lu k et l'octet de poids fort du mot lu k + 1 :
+   (prev << 8) | (next >> 8), le mot écrit ne gardant que 16 bits. Le
+   passage d'une tile à la suivante n'est qu'un changement de pointeur :
+   le mot lu suivant est le premier de la tile suivante. Les tiles
+   entières passent par copyTileOdd (quatre MOV.L). */
+static void copySpanOdd(Dest d, const PlaneRow *pr, unsigned x, unsigned n,
+                        ComposeCost *cost) {
     const uint16_t *cell = pr->row + (x >> TILE_SHIFT);
-    unsigned xInTile = x & (TILE_SIZE - 1);
-    uint8_t carry = 0;
-    int hasCarry = 0;
+    const unsigned xInTile = x & (TILE_SIZE - 1); /* impair */
+    const uint8_t *src = tileStart(pr, cell) + xInTile - 1;
+    unsigned prev = readPair(src);                 /* pixels x - 1 et x */
+    unsigned left = (TILE_SIZE - 1 - xInTile) / 2; /* mots lus restants */
+    unsigned words = n / 2;
+    src += 2;
 
-    COST_ADD(cost, wordsOdd, n / 2);
-    while (n > 0) {
-        const uint8_t *src = tileStart(pr, cell) + xInTile;
+    COST_ADD(cost, wordsOdd, words);
+    COST_ADD(cost, tileChunks, 1);
+    for (;;) {
+        /* Mots dont la source reste dans la tile en cours */
+        unsigned count = left < words ? left : words;
+        words -= count;
+        for (; count > 0; count--) {
+            const unsigned next = readPair(src);
+            src += 2;
+            PUT(d, 0, (uint16_t)((prev << 8) | (next >> 8)));
+            SKIP(d, 1);
+            prev = next;
+        }
+        if (words == 0)
+            return;
+
+        /* Tile suivante ; entières tant qu'il reste 8 mots ou plus */
         cell = nextCell(pr, cell);
+        src = tileStart(pr, cell);
         COST_ADD(cost, tileChunks, 1);
-
-        if (hasCarry && xInTile == 0 && n >= TILE_SIZE) {
-            carry = copyTileOdd(d, src, carry);
+        while (words >= TILE_SIZE / 2) {
+            prev = copyTileOdd(d, src, (uint8_t)prev);
             SKIP(d, TILE_SIZE / 2);
-            n -= TILE_SIZE;
-            continue;
+            words -= TILE_SIZE / 2;
+            if (words == 0)
+                return;
+            cell = nextCell(pr, cell);
+            src = tileStart(pr, cell);
+            COST_ADD(cost, tileChunks, 1);
         }
-
-        unsigned count = TILE_SIZE - xInTile;
-        if (count > n)
-            count = n;
-        n -= count;
-        xInTile = 0;
-
-        unsigned i = 0;
-        if (hasCarry) {
-            PUT(d, 0, makePair(carry, src[0]));
-            SKIP(d, 1);
-            i = 1;
-            hasCarry = 0;
-        }
-        for (; i + 1 < count; i += 2) {
-            PUT(d, 0, makePair(src[i], src[i + 1]));
-            SKIP(d, 1);
-        }
-        if (i < count) {
-            carry = src[i];
-            hasCarry = 1;
-        }
+        left = TILE_SIZE / 2;
     }
-    /* n étant pair, il ne reste jamais de pixel en attente ici */
 }
 
 /* ---- Fusion pixel par pixel ------------------------------------------------
@@ -380,9 +391,9 @@ static inline unsigned pixelAt(const PlaneRow *pr, unsigned x) {
 
 /* Le mot de frontière entre deux segments (colonnes xa et xa + 1 de A,
    xb et xb + 1 de B) : quatre pixels lus directement, sans curseurs. */
-ONCE_PER_LINE static void mergeWord(Dest d, const PlaneRow *pa, unsigned xa,
-                                    const PlaneRow *pb, unsigned xb,
-                                    ComposeCost *cost) {
+COLD_CODE static void mergeWord(Dest d, const PlaneRow *pa, unsigned xa,
+                                const PlaneRow *pb, unsigned xb,
+                                ComposeCost *cost) {
     const unsigned xa1 = xa + 1 == pa->width ? 0 : xa + 1;
     const unsigned xb1 = xb + 1 == pb->width ? 0 : xb + 1;
     unsigned left = pixelAt(pa, xa), right = pixelAt(pa, xa1);
@@ -444,39 +455,61 @@ int compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
 
     COST_ADD(cost, lines, 1);
 
-    /* 1. Segments : la ligne de A, tile par tile, depuis la colonne
-          scrollAX - 1, les tiles voisines de même classe regroupées. La
-          classe du segment en cours reste dans une variable locale (un
-          registre) ; le segment n'est rangé qu'une fois terminé. On compte
-          au passage les pixels copiés depuis A (opaques) et depuis B
-          (transparents), pour le choix du décalage. */
+    /* 1. Segments : la ligne de A depuis la colonne scrollAX - 1, les
+          tiles voisines de même classe regroupées. Les colonnes où la
+          classe change sont lues dans pa.changes (assets_types.h), 32 à la
+          fois : on ne s'arrête que sur les changements, et la boucle finit
+          après le dernier. La classe du segment en cours reste dans une
+          variable locale (un registre) ; le segment n'est rangé qu'une fois
+          terminé. On compte au passage les pixels copiés depuis A (opaques)
+          et depuis B (transparents), pour le choix du décalage. */
     const unsigned xs = wrapIn(scrollAX - 1, pa.width);
+    const unsigned col0 = xs >> TILE_SHIFT; /* tile entamée */
+    const unsigned firstSx = TILE_SIZE - (xs & (TILE_SIZE - 1));
+#if LINE_SPAN != 322 || TILE_SIZE != 16
+#error "nombre de colonnes de la ligne (masque de 'bits') à revoir"
+#endif
     Run runs[MAX_RUNS];
     Run *run = runs;
-    const uint16_t *cell = pa.row + (xs >> TILE_SHIFT);
-    unsigned sx = TILE_SIZE - (xs & (TILE_SIZE - 1)); /* tile entamée */
     unsigned start = 0;
     unsigned fromA = 0, fromB = 0;
-    uint32_t current = rowClasses[*cell] & classMask;
-    cell = nextCell(&pa, cell);
-    COST_ADD(cost, aTiles, 1);
+    uint32_t current = rowClasses[pa.row[col0]] & classMask;
+    COST_ADD(cost, aTiles,
+             (LINE_SPAN - firstSx + 2 * TILE_SIZE - 1) >> TILE_SHIFT);
 
-    for (; sx < LINE_SPAN; sx += TILE_SIZE) {
-        const uint32_t rowClass = rowClasses[*cell] & classMask;
-        cell = nextCell(&pa, cell);
-        COST_ADD(cost, aTiles, 1);
-        if (rowClass != current) {
-            if (current == opaque)
-                fromA += sx - start;
-            else if (current == 0)
-                fromB += sx - start;
-            run->start = (int16_t)start;
-            run->end = (int16_t)sx;
-            run->rowClass = current;
-            run++;
-            start = sx;
-            current = rowClass;
-        }
+    /* Bits des colonnes suivantes, col0 + 1 et au-delà, en tête de
+       'bits' : 32 bits lus depuis l'octet qui contient le premier, puis
+       décalés de 0 à 7 bits ; il en reste au moins 25. On garde ceux des
+       colonnes de la ligne : 21 si elle entame sa première tile par son
+       dernier pixel (firstSx = 1), 20 sinon. */
+    const unsigned b = col0 + 1;
+    const uint8_t *const p8 = pa.changes + (b >> 3);
+    uint32_t bits = (uint32_t)p8[0] << 24 | (uint32_t)p8[1] << 16 |
+                    (uint32_t)p8[2] << 8 | p8[3];
+    if (b & 4)
+        bits <<= 4;
+    if (b & 2)
+        bits <<= 2;
+    if (b & 1)
+        bits <<= 1;
+    bits &= firstSx == 1 ? 0xFFFFF800u : 0xFFFFF000u;
+
+    for (unsigned sx = firstSx; bits != 0; bits <<= 1, sx += TILE_SIZE) {
+        if ((int32_t)bits >= 0)
+            continue;
+        unsigned col = b + ((sx - firstSx) >> TILE_SHIFT);
+        while (col >= planeA->widthTiles)
+            col -= planeA->widthTiles;
+        if (current == opaque)
+            fromA += sx - start;
+        else if (current == 0)
+            fromB += sx - start;
+        run->start = (int16_t)start;
+        run->end = (int16_t)sx;
+        run->rowClass = current;
+        run++;
+        start = sx;
+        current = rowClasses[pa.row[col]] & classMask;
     }
     if (current == opaque)
         fromA += LINE_SPAN - start;
@@ -494,8 +527,10 @@ int compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
           322 pixels (161 mots). La parité des deux plans s'inverse : on
           choisit le décalage qui rend pair le plan le plus coûteux en
           source impaire (un A impair coûte aussi ses mots de frontière). */
-    const unsigned evenA = !(wrapIn(scrollAX, pa.width) & 1);
-    const unsigned evenB = !(wrapIn(scrollBX, pb.width) & 1);
+    /* Largeurs multiples de TILE_SIZE, donc paires : ramener un scroll
+       dans le plan ne change pas sa parité. */
+    const unsigned evenA = !(scrollAX & 1);
+    const unsigned evenB = !(scrollBX & 1);
     const unsigned costA = fromA / 2 * ODD_WORD_EXTRA +
                            (unsigned)(lastRun - runs) * BOUNDARY_WORD_EXTRA;
     const unsigned costB = fromB / 2 * ODD_WORD_EXTRA;

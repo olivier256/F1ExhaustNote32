@@ -44,7 +44,8 @@
 
 typedef struct {
     uint32_t lines;       /* lignes composées */
-    uint32_t aTiles;      /* tiles de A examinées pour former les segments */
+    uint32_t aTiles;      /* tiles de A couvertes par la ligne (20 ou 21,
+                             plus l'entamée) : la part fixe de la ligne */
     uint32_t runs;        /* segments dessinés (copie A, copie B, fusion) */
     uint32_t tileChunks;  /* morceaux de ligne de tile lus (un par tile
                              traversée et par plan) : chacun charge une
@@ -56,14 +57,15 @@ typedef struct {
 
 /* Coûts unitaires, en cycles SH2, hors écritures dans le frame buffer.
    Étalonnés par tools/sh2cycles (décalage d'écran choisi ligne par ligne,
-   cache en 2 voies + RAM). */
+   segments formés depuis les changements de classe, cache en 2 voies +
+   RAM). */
 #define CYCLES_LINE 0         /* compté dans CYCLES_A_TILE */
-#define CYCLES_A_TILE 22      /* tile de A examinée, et part fixe de la ligne */
-#define CYCLES_RUN 109        /* segment : choix du chemin, positions */
-#define CYCLES_TILE_CHUNK 73  /* morceau de tile : adresse, cache, boucle */
+#define CYCLES_A_TILE 5       /* part fixe de la ligne, répartie par tile */
+#define CYCLES_RUN 131        /* segment : formation, choix du chemin */
+#define CYCLES_TILE_CHUNK 72  /* morceau de tile : adresse, cache, boucle */
 #define CYCLES_WORD_EVEN 0    /* compté dans les coûts ci-dessus */
-#define CYCLES_WORD_ODD 24    /* surcoût d'un mot source impaire */
-#define CYCLES_WORD_MERGED 24 /* surcoût d'un mot fusionné */
+#define CYCLES_WORD_ODD 11    /* surcoût d'un mot source impaire */
+#define CYCLES_WORD_MERGED 38 /* surcoût d'un mot fusionné */
 
 /* Interruptions du Master, par image : une H_INT par ligne affichée (elle
    écrit le décalage d'écran de la ligne suivante) et une V_INT. Entrée

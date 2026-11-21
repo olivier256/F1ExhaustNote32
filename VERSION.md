@@ -425,3 +425,92 @@ Par CPU et par image : 310 000 cycles en moyenne, 356 000 au pire (441 000
 avant) ; impair-impair rejoint pair-pair. Mots en source impaire sur la
 démo : 1 194 par image au lieu de 16 960.
 ```
+
+---
+
+Segments formés depuis les changements de classe, source impaire par mots alignés
+
+**Ce que fait cette version** :
+- Profil d'une image aux parités différentes (xA = 100, xB = 79), avant
+  cette version : `compose_line` seule prenait 34 % des instructions,
+  dont 27 000 par image pour la boucle qui forme les segments (12
+  instructions par tile de A, 20 tiles par ligne), contre 7 % pour la
+  copie depuis une source impaire. On a donc commencé par la formation
+  des segments.
+- `tools/bmp2c` : pour chaque plan, une table `classChanges` (champ
+  ajouté à `Tilemap`, `assets_types.h`) : pour chaque ligne de pixels, un
+  bit par colonne de tile, mis si la classe de la ligne y change. La
+  rangée est suivie de 22 colonnes répétées (une ligne d'écran se lit
+  d'un seul tenant) et d'un octet de garde : 10 octets par ligne pour A,
+  9 pour B, 4,2 Ko en tout. Même préparation pour tous les plans.
+- `compose_line` lit les bits des colonnes de la ligne en une fois
+  (quatre octets, puis un décalage de 0 à 7 bits composé de décalages
+  fixes), et ne s'arrête que sur les changements : 4 instructions par
+  tile sans changement, et la boucle finit après le dernier. La classe
+  du nouveau segment n'est lue qu'au changement.
+- Parité d'un défilement prise directement sur scrollAX et scrollBX
+  (les largeurs des plans sont paires) : deux réductions dans le plan en
+  moins, et le code chaud retombe sous 2 Ko (2 028 octets).
+- `copySpanOdd` (source impaire) : lecture par mots alignés ; chaque mot
+  écrit réunit l'octet de poids faible d'un mot lu et l'octet de poids
+  fort du suivant, le passage à la tile suivante n'est qu'un changement
+  de pointeur ; tiles entières toujours par quatre MOV.L. 17 000
+  instructions par image au lieu de 24 000 sur l'image profilée ; elle
+  revient en RAM interne, seul le mot de frontière (`mergeWord`) reste en
+  SDRAM.
+- `cost.h` réétalonné (-6 % / +4 %).
+- Vérifié : `test_compose`, 1 168 576 lignes dont 609 666 décalées, sans
+  erreur ; les 5 scénarios du simulateur complet identiques à la
+  référence ; sur SH2, pixels identiques à l'hôte.
+
+**Mesures** (banc, par CPU et par image, hors écritures FB) :
+- 276 852 cycles en moyenne (309 819 avant), 315 938 au pire (355 898) ;
+  instructions : 184 439 en moyenne ;
+- pire image avec ses écritures : 369 890 cycles à 3 cycles par
+  écriture (96 % d'une image de 1/60 s), 405 858 à 5 cycles (106 %) ;
+- selon la parité de xA et xB (moyenne / pire) :
+
+| Parité xA, xB  | Version précédente  | Cette version       |
+|----------------|---------------------|---------------------|
+| pair, pair     | 292 000 / 305 000   | 265 000 / 282 000   |
+| pair, impair   | 332 000 / 353 000   | 285 000 / 315 000   |
+| impair, pair   | 343 000 / 356 000   | 293 000 / 316 000   |
+| impair, impair | 299 000 / 311 000   | 269 000 / 287 000   |
+
+- scénarios du simulateur (modèle étalonné, écritures à 3 cycles) : 0,80
+  à 0,95 image de 1/60 s, « milieu » compris (1,05 avant).
+
+**Ce qui reste pour plus tard** :
+- écritures à 5 cycles (FIFO pleine) : le pire cas dépasse encore
+  l'image de 6 %. Pistes : la fusion (24 % des instructions sur l'image
+  profilée, environ 25 instructions par mot), la part fixe de chaque
+  ligne (environ 230 instructions, hors formation des segments) ;
+- segments impairs courts : la boucle fait 12 instructions par mot ; un
+  passage en assembleur SH2 (MOV.L, deux mots par tour) n'en ferait
+  gagner que 2 000 environ par image : non retenu pour l'instant ;
+- le coût des interruptions du Master (estimé à 40 cycles) reste à
+  mesurer ;
+- sur la console, la routine H_INT dispose du seul HBlank pour écrire
+  SFT : à vérifier sur un émulateur 32X ;
+- le programme de démarrage SH2 devra mettre le cache en mode 2 voies,
+  recopier le code chaud en C000 0000h, et démasquer V_INT et H_INT sur
+  le Master.
+
+Message de commit proposé :
+
+```
+Segments formés depuis les changements de classe, source impaire par mots alignés
+
+bmp2c prépare pour chaque plan une table classChanges : pour chaque
+ligne de pixels, un bit par colonne de tile où la classe de la ligne
+change (4,2 Ko pour la démo). compose_line lit les colonnes de la ligne
+en une fois et ne s'arrête que sur les changements, au lieu d'examiner
+chaque tile de A. Parité des défilements prise sur les scrolls.
+
+copySpanOdd lit le plan par mots alignés : chaque mot écrit réunit deux
+octets de deux mots lus. Code chaud en RAM interne : 2 028 octets.
+cost.h réétalonné.
+
+Par CPU et par image, hors écritures FB : 277 000 cycles en moyenne,
+316 000 au pire (310 000 et 356 000 avant).
+```

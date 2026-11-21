@@ -67,7 +67,10 @@ on parcourt la ligne du plan A tile par tile ; bmp2c a donné la classe
 de chaque ligne de tile (transparente, opaque, mixte). Transparente : on
 copie le plan B. Opaque : on copie le plan A, et B n'est pas lu. Mixte :
 on fusionne pixel par pixel. Sur la démo, 95 % des lignes de tile de A
-sont entièrement transparentes ou entièrement opaques.
+sont entièrement transparentes ou entièrement opaques. bmp2c prépare
+aussi, pour chaque ligne de pixels d'un plan, les colonnes de tile où la
+classe change (un bit par colonne) : les segments d'une ligne se forment
+en ne regardant que ces changements.
 
 Règles d'écriture, reprises d'AMB96 :
 - uniquement des écritures 16 bits, à des adresses paires : chaque mot
@@ -75,9 +78,10 @@ Règles d'écriture, reprises d'AMB96 :
   écritures par image** (160 mots par ligne, 161 avec décalage d'écran),
   quels que soient les défilements (le surdessin, B puis A par la zone
   overwrite, en aurait coûté 53 000 à 58 000) ;
-- source impaire : pixels assemblés en registres (`MOV.L` et décalages
-  pour une tile entière) ; la décision de parité est prise une fois par
-  ligne et par plan ;
+- source impaire : lecture par mots alignés, chaque mot écrit réunit
+  deux octets de deux mots lus (`MOV.L` et décalages pour une tile
+  entière) ; la décision de parité est prise une fois par ligne et par
+  plan ;
 - tiles 16 × 16 alignées sur 16 octets : une ligne de tile = une ligne
   du cache SH2 ;
 - Master et Slave composent une ligne sur deux.
@@ -96,9 +100,9 @@ chaque ligne) pour la ligne suivante. C'est le Master parce qu'il a la
 priorité sur le bus.
 
 **Code et cache.** Le moteur suppose le cache du SH2 en mode « 2 voies
-+ RAM » : le code chaud de `compose.c` (1,8 Ko) dans les 2 Ko de RAM
-interne, son code froid (copie depuis une source impaire, devenue rare)
-en SDRAM. Voir `tools/sh2cycles`.
++ RAM » : le code chaud de `compose.c` (2 028 octets) dans les 2 Ko de
+RAM interne, son code froid (le mot de frontière, fusionné pixel par
+pixel) en SDRAM. Voir `tools/sh2cycles`.
 
 ## Mesurer : `VDP_STATS=1`
 
