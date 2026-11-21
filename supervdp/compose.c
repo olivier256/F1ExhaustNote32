@@ -50,6 +50,23 @@
    - tiles entières copiées par une suite de 8 mots, sans boucle.
    ========================================================================= */
 
+/* Fonctions appelées quelques fois par ligne : gardées en un seul
+   exemplaire (pas de recopie dans compose_line), pour que le code de
+   rendu tienne dans les 2 Ko de RAM interne du SH2. */
+#define ONCE_PER_LINE __attribute__((noinline))
+
+/* Code froid : la copie depuis une source impaire. Avec le décalage
+   d'écran choisi ligne par ligne, elle ne sert plus qu'au plan minoritaire
+   d'une ligne, quelques pour cent des mots.
+   Sur SH2, il est rangé à part (section .text.sdram) : l'édition de liens
+   le laisse en SDRAM, derrière le cache, et réserve la RAM interne au
+   code chaud (voir tools/sh2cycles/bench_ram.ld). */
+#if defined(__sh__)
+#define COLD_CODE __attribute__((noinline, section(".text.sdram")))
+#else
+#define COLD_CODE __attribute__((noinline))
+#endif
+
 /* Ramène v dans [0, n), par additions ou soustractions : les valeurs
    courantes (un défilement, une ligne) sont à moins d'un tour du plan. */
 static unsigned wrapIn(int v, unsigned n) {
@@ -218,8 +235,8 @@ static inline uint8_t copyTileOdd(Dest d, const uint8_t *src, uint8_t carry) {
 /* Source impaire : chaque mot écrit réunit un pixel de colonne impaire et
    le suivant. Le dernier pixel d'une tile (colonne 15) va donc avec le
    premier de la tile suivante : il est gardé de côté ('carry'). */
-static void copySpanOdd(Dest d, const PlaneRow *pr, unsigned x, unsigned n,
-                        ComposeCost *cost) {
+COLD_CODE static void copySpanOdd(Dest d, const PlaneRow *pr, unsigned x,
+                                  unsigned n, ComposeCost *cost) {
     const uint16_t *cell = pr->row + (x >> TILE_SHIFT);
     unsigned xInTile = x & (TILE_SIZE - 1);
     uint8_t carry = 0;
@@ -291,9 +308,9 @@ static inline void cursorNextTile(Cursor *c, const PlaneRow *pr) {
     c->left = TILE_SIZE;
 }
 
-static void mergeSpan(Dest d, const PlaneRow *pa, unsigned xa,
-                      const PlaneRow *pb, unsigned xb, unsigned n,
-                      ComposeCost *cost) {
+ONCE_PER_LINE static void mergeSpan(Dest d, const PlaneRow *pa, unsigned xa,
+                                    const PlaneRow *pb, unsigned xb, unsigned n,
+                                    ComposeCost *cost) {
     Cursor a, b;
     cursorAt(&a, pa, xa);
     cursorAt(&b, pb, xb);
@@ -363,8 +380,9 @@ static inline unsigned pixelAt(const PlaneRow *pr, unsigned x) {
 
 /* Le mot de frontière entre deux segments (colonnes xa et xa + 1 de A,
    xb et xb + 1 de B) : quatre pixels lus directement, sans curseurs. */
-static void mergeWord(Dest d, const PlaneRow *pa, unsigned xa,
-                      const PlaneRow *pb, unsigned xb, ComposeCost *cost) {
+ONCE_PER_LINE static void mergeWord(Dest d, const PlaneRow *pa, unsigned xa,
+                                    const PlaneRow *pb, unsigned xb,
+                                    ComposeCost *cost) {
     const unsigned xa1 = xa + 1 == pa->width ? 0 : xa + 1;
     const unsigned xb1 = xb + 1 == pb->width ? 0 : xb + 1;
     unsigned left = pixelAt(pa, xa), right = pixelAt(pa, xa1);
@@ -389,29 +407,35 @@ static const uint32_t classMasks[TILE_SIZE] = {
 /* Bits de la classe opaque (01) dans toutes les lignes */
 #define ALL_ROWS_OPAQUE 0x55555555u
 
-/* Segment de la ligne d'écran : colonnes [start, end), une classe (déjà
-   masquée : comparée aux valeurs de la ligne, sans décalage) */
+/* Segment de la ligne : colonnes [start, end) comptées depuis la colonne
+   scrollAX - 1 du plan A, une classe (déjà masquée : comparée aux valeurs
+   de la ligne, sans décalage) */
 typedef struct {
     int16_t start, end;
     uint32_t rowClass;
 } Run;
 
-/* Une tile de A par segment au pire, plus les deux tiles entamées */
-#define MAX_RUNS (FB_WIDTH / TILE_SIZE + 2)
+/* Segments formés sur LINE_SPAN pixels, de la colonne scrollAX - 1 à la
+   colonne scrollAX + 320 de A : de quoi dessiner la ligne avec ou sans
+   décalage (voir compose_line). */
+#define LINE_SPAN (FB_WIDTH + 2)
 
-void compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
-                  int scrollAX, int worldAY, const Tilemap *planeB,
-                  int scrollBX, int worldBY, ComposeCost *cost) {
+/* Une tile de A par segment au pire, plus les deux tiles entamées */
+#define MAX_RUNS (LINE_SPAN / TILE_SIZE + 2)
+
+/* Choix du décalage : surcoûts, en cycles SH2, d'un mot copié depuis une
+   source impaire et d'un mot de frontière (fusion), par rapport à un mot
+   copié depuis une source paire. Ordres de grandeur mesurés avec
+   tools/sh2cycles ; seule leur proportion compte. */
+#define ODD_WORD_EXTRA 7
+#define BOUNDARY_WORD_EXTRA 50
+
+int compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
+                 int scrollAX, int worldAY, const Tilemap *planeB, int scrollBX,
+                 int worldBY, ComposeCost *cost) {
     PlaneRow pa, pb;
     planeRowInit(&pa, planeA, tiles, worldAY);
     planeRowInit(&pb, planeB, tiles, worldBY);
-
-    const unsigned xa0 = wrapIn(scrollAX, pa.width);
-    const unsigned xb0 = wrapIn(scrollBX, pb.width);
-
-    /* Une décision de parité par plan, pour toute la ligne */
-    const CopySpan copyA = (xa0 & 1) ? copySpanOdd : copySpanEven;
-    const CopySpan copyB = (xb0 & 1) ? copySpanOdd : copySpanEven;
 
     /* Classes de cette ligne de tile, masquées */
     const uint32_t classMask = classMasks[pa.rowInTile];
@@ -420,24 +444,32 @@ void compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
 
     COST_ADD(cost, lines, 1);
 
-    /* 1. Segments : la ligne de A, tile par tile, les tiles voisines de
-          même classe regroupées. La classe du segment en cours reste dans
-          une variable locale (un registre) ; le segment n'est rangé dans
-          le tableau qu'une fois terminé. */
+    /* 1. Segments : la ligne de A, tile par tile, depuis la colonne
+          scrollAX - 1, les tiles voisines de même classe regroupées. La
+          classe du segment en cours reste dans une variable locale (un
+          registre) ; le segment n'est rangé qu'une fois terminé. On compte
+          au passage les pixels copiés depuis A (opaques) et depuis B
+          (transparents), pour le choix du décalage. */
+    const unsigned xs = wrapIn(scrollAX - 1, pa.width);
     Run runs[MAX_RUNS];
     Run *run = runs;
-    const uint16_t *cell = pa.row + (xa0 >> TILE_SHIFT);
-    unsigned sx = TILE_SIZE - (xa0 & (TILE_SIZE - 1)); /* tile entamée */
+    const uint16_t *cell = pa.row + (xs >> TILE_SHIFT);
+    unsigned sx = TILE_SIZE - (xs & (TILE_SIZE - 1)); /* tile entamée */
     unsigned start = 0;
+    unsigned fromA = 0, fromB = 0;
     uint32_t current = rowClasses[*cell] & classMask;
     cell = nextCell(&pa, cell);
     COST_ADD(cost, aTiles, 1);
 
-    for (; sx < FB_WIDTH; sx += TILE_SIZE) {
+    for (; sx < LINE_SPAN; sx += TILE_SIZE) {
         const uint32_t rowClass = rowClasses[*cell] & classMask;
         cell = nextCell(&pa, cell);
         COST_ADD(cost, aTiles, 1);
         if (rowClass != current) {
+            if (current == opaque)
+                fromA += sx - start;
+            else if (current == 0)
+                fromB += sx - start;
             run->start = (int16_t)start;
             run->end = (int16_t)sx;
             run->rowClass = current;
@@ -446,18 +478,52 @@ void compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
             current = rowClass;
         }
     }
+    if (current == opaque)
+        fromA += LINE_SPAN - start;
+    else if (current == 0)
+        fromB += LINE_SPAN - start;
     run->start = (int16_t)start;
-    run->end = FB_WIDTH; /* la dernière tile est coupée au bord de l'écran */
+    run->end = LINE_SPAN; /* la dernière tile est coupée */
     run->rowClass = current;
     const Run *const lastRun = run;
 
-    /* 2. Dessin, mot par mot. 'p' est la prochaine colonne d'écran à
+    /* 2. Décalage d'écran (SFT) de cette ligne. Sans décalage, le pixel x
+          de l'écran est le pixel x de la ligne, qui montre la colonne
+          scrollAX + x de A. Avec décalage, l'écran montre le pixel x + 1
+          de la ligne : on la dessine depuis la colonne scrollAX - 1, sur
+          322 pixels (161 mots). La parité des deux plans s'inverse : on
+          choisit le décalage qui rend pair le plan le plus coûteux en
+          source impaire (un A impair coûte aussi ses mots de frontière). */
+    const unsigned evenA = !(wrapIn(scrollAX, pa.width) & 1);
+    const unsigned evenB = !(wrapIn(scrollBX, pb.width) & 1);
+    const unsigned costA = fromA / 2 * ODD_WORD_EXTRA +
+                           (unsigned)(lastRun - runs) * BOUNDARY_WORD_EXTRA;
+    const unsigned costB = fromB / 2 * ODD_WORD_EXTRA;
+    const unsigned costNoShift = (evenA ? 0 : costA) + (evenB ? 0 : costB);
+    const unsigned costShift = (evenA ? costA : 0) + (evenB ? costB : 0);
+    const int shift = costShift < costNoShift;
+
+    /* Ligne dessinée : 'width' pixels ; son pixel 0 est le pixel 'skip'
+       des segments, et montre la colonne xa0 de A et xb0 de B. */
+    const unsigned width = FB_WIDTH + 2 * (unsigned)shift;
+    const unsigned skip = 1 - (unsigned)shift;
+    const unsigned xa0 = advance(xs, skip, pa.width);
+    const unsigned xb0 = wrapIn(scrollBX - shift, pb.width);
+
+    /* Une décision de parité par plan, pour toute la ligne */
+    const CopySpan copyA = (xa0 & 1) ? copySpanOdd : copySpanEven;
+    const CopySpan copyB = (xb0 & 1) ? copySpanOdd : copySpanEven;
+
+    /* 3. Dessin, mot par mot. 'p' est la prochaine colonne de la ligne à
           écrire, toujours paire. Un segment qui commence à une colonne
           impaire a déjà eu son premier pixel écrit avec le mot de
           frontière précédent. */
     unsigned p = 0;
     for (run = runs; run <= lastRun; run++) {
-        const unsigned end = (unsigned)run->end & ~1u; /* mots entiers */
+        unsigned runEnd = (unsigned)run->end - skip;
+        if (runEnd > width)
+            runEnd = width;
+        const unsigned end = runEnd & ~1u; /* mots entiers */
 
         if (end > p) {
             const unsigned count = end - p;
@@ -476,11 +542,12 @@ void compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
 
         /* Frontière à une colonne impaire : le mot (end, end + 1) est à
            cheval sur ce segment et le suivant. */
-        if (run->end & 1) {
+        if (runEnd & 1) {
             COST_ADD(cost, runs, 1);
             mergeWord(DEST(offset + p), &pa, advance(xa0, p, pa.width), &pb,
                       advance(xb0, p, pb.width), cost);
             p += 2;
         }
     }
+    return shift;
 }

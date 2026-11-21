@@ -38,6 +38,7 @@ def load(folder, cpu):
         row = dict(zip(FIELDS, map(int, p[1:8])))
         row["model"] = int(p[8])
         row["print"] = p[9]
+        row["shifted"] = int(p[10]) if len(p) > 10 else 0
         costs.append(row)
     measured = []
     for line in open("%s/cycles_%s.txt" % (folder, cpu)):
@@ -54,10 +55,12 @@ def load(folder, cpu):
     if bad:
         sys.exit("%s : le code SH2 ne dessine pas comme l'hote (images %s)"
                  % (cpu, bad[:10]))
+    # 160 mots par ligne, 161 pour une ligne décalée (SFT)
     for i, m in enumerate(measured):
-        if m["fb"] != FB_WRITES_PER_CPU:
+        expected = FB_WRITES_PER_CPU + costs[i]["shifted"]
+        if m["fb"] != expected:
             sys.exit("%s : image %d, %d ecritures FB au lieu de %d"
-                     % (cpu, i, m["fb"], FB_WRITES_PER_CPU))
+                     % (cpu, i, m["fb"], expected))
     return costs, measured
 
 
@@ -66,8 +69,11 @@ def main():
     rows, ys = [], []
     for cpu in ("master", "slave"):
         costs, measured = load(folder, cpu)
-        print("%s : %d images, empreintes identiques a l'hote, %d ecritures FB "
-              "par image" % (cpu, len(costs), FB_WRITES_PER_CPU))
+        shifted = sum(c["shifted"] for c in costs) / len(costs)
+        print("%s : %d images, empreintes identiques a l'hote, %d a %d ecritures "
+              "FB par image (160 ou 161 par ligne ; %.0f lignes decalees en "
+              "moyenne)" % (cpu, len(costs), FB_WRITES_PER_CPU,
+                            FB_WRITES_PER_CPU + 112, shifted))
         for c, m in zip(costs, measured):
             rows.append(c)
             ys.append(m)
@@ -87,9 +93,9 @@ def main():
     codeMisses = np.array([m["codeMisses"] for m in ys], dtype=float)
     print("  defauts de cache : moyenne %d (%d cycles), dont instructions %d"
           % (misses.mean(), misses.mean() * 12, codeMisses.mean()))
-    worst = cycles.max()
+    fb = np.array([m["fb"] for m in ys], dtype=float)
     for label, per in (("3 cycles", 3), ("5 cycles", 5)):
-        total = worst + FB_WRITES_PER_CPU * per
+        total = (cycles + fb * per).max()  # écritures réelles de chaque image
         print("  pire image + ecritures FB a %s : %d / %d = %.1f %%"
               % (label, total, FRAME_CYCLES, 100.0 * total / FRAME_CYCLES))
 

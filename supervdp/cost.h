@@ -21,7 +21,7 @@
    « 2 voies + RAM », le code de compose.c dans la RAM interne (voir
    tools/sh2cycles/bench_ram.ld). Ajustement par moindres carrés, à coûts
    positifs ou nuls, sur 360 images : le modèle ci-dessous reproduit les
-   temps du banc à -5 % / +6 % près. Les refaire après toute modification
+   temps du banc à -7 % / +4 % près. Les refaire après toute modification
    de compose.c : tools/sh2cycles/run.sh imprime les nouvelles valeurs.
 
    Chaque ligne écrit exactement 160 mots, et examine presque toujours 20
@@ -55,15 +55,21 @@ typedef struct {
 } ComposeCost;
 
 /* Coûts unitaires, en cycles SH2, hors écritures dans le frame buffer.
-   Étalonnés par tools/sh2cycles (compose.c réécrit pour le SH2, cache
-   en 2 voies + RAM). */
-#define CYCLES_LINE 0        /* compté dans CYCLES_A_TILE */
-#define CYCLES_A_TILE 18     /* tile de A examinée, et part fixe de la ligne */
-#define CYCLES_RUN 45        /* segment : choix du chemin, positions */
-#define CYCLES_TILE_CHUNK 70 /* morceau de tile : adresse, cache, boucle */
-#define CYCLES_WORD_EVEN 0   /* compté dans les coûts ci-dessus */
-#define CYCLES_WORD_ODD 7    /* surcoût d'un mot source impaire */
-#define CYCLES_WORD_MERGED 52 /* surcoût d'un mot fusionné */
+   Étalonnés par tools/sh2cycles (décalage d'écran choisi ligne par ligne,
+   cache en 2 voies + RAM). */
+#define CYCLES_LINE 0         /* compté dans CYCLES_A_TILE */
+#define CYCLES_A_TILE 22      /* tile de A examinée, et part fixe de la ligne */
+#define CYCLES_RUN 109        /* segment : choix du chemin, positions */
+#define CYCLES_TILE_CHUNK 73  /* morceau de tile : adresse, cache, boucle */
+#define CYCLES_WORD_EVEN 0    /* compté dans les coûts ci-dessus */
+#define CYCLES_WORD_ODD 24    /* surcoût d'un mot source impaire */
+#define CYCLES_WORD_MERGED 24 /* surcoût d'un mot fusionné */
+
+/* Interruptions du Master, par image : une H_INT par ligne affichée (elle
+   écrit le décalage d'écran de la ligne suivante) et une V_INT. Entrée
+   dans l'exception, routine, RTE : ESTIMATION, non mesurée par le banc
+   (qui ne simule pas les interruptions). */
+#define CYCLES_INTERRUPT 40
 
 static inline uint32_t cost_cycles(const ComposeCost *c) {
     return c->lines * CYCLES_LINE + c->aTiles * CYCLES_A_TILE +

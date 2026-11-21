@@ -29,18 +29,24 @@ volatile uint8_t bench_fb[VDP_DRAM_SIZE] __attribute__((section(".fb")));
 
 void sys_write(const char *text, int length);
 
+/* Décalage d'écran choisi pour chaque ligne (voir compose.h) */
+static uint8_t lineShift[BENCH_SCREEN_HEIGHT];
+
 static void drawFrame(const BenchFrame *f) {
     ComposeCost cost; /* non rempli : compteurs absents sur SH2 */
     for (int y = BENCH_FIRST_LINE; y < BENCH_SCREEN_HEIGHT; y += 2)
-        compose_line(fb_offset(0, y), &asset_tiles, &asset_plane_a, f->xA,
-                     f->yA + y, &asset_plane_b, f->xB, f->yB + y, &cost);
+        lineShift[y] = (uint8_t)compose_line(
+            fb_offset(0, y), &asset_tiles, &asset_plane_a, f->xA, f->yA + y,
+            &asset_plane_b, f->xB, f->yB + y, &cost);
 }
 
+/* Empreinte de ce que l'écran affiche : 320 pixels par ligne, à partir
+   du pixel 'décalage' de la ligne */
 static uint32_t fingerprint(void) {
     uint32_t h = 2166136261u;
     for (int y = BENCH_FIRST_LINE; y < BENCH_SCREEN_HEIGHT; y += 2)
         for (int x = 0; x < FB_WIDTH; x++)
-            h = (h ^ bench_fb[fb_offset(x, y)]) * 16777619u;
+            h = (h ^ bench_fb[fb_offset(x + lineShift[y], y)]) * 16777619u;
     return h;
 }
 

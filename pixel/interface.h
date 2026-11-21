@@ -10,7 +10,8 @@
    Sur la vraie machine, l'IC4 regroupe les registres système
    (2000 4000h - 2000 403Fh côté SH2) : masques et acquittement des
    interruptions, compteur H, FIFO DREQ, PWM, registres de communication...
-   Émulés pour l'instant : les registres de communication, et V_INT.
+   Émulés pour l'instant : les registres de communication, V_INT et H_INT
+   (avec le compteur H et le bit HEN).
    ========================================================================= */
 
 /* ---- Registres de communication ------------------------------------------
@@ -39,7 +40,10 @@ extern volatile uint16_t comm[COMM_COUNT];
 #define INTMASK_PWM 0x0001
 #define INTMASK_CMD 0x0002
 #define INTMASK_H 0x0004
-#define INTMASK_V 0x0008 /* seule source émulée pour l'instant */
+#define INTMASK_V 0x0008
+/* Bit 7 du même registre, commun aux deux CPU : H_INT aussi pendant le
+   VBlank (0 : seulement sur les lignes affichées) */
+#define INTMASK_HEN 0x0080
 
 uint16_t interface_read_intmask(void);
 void interface_write_intmask(uint16_t value);
@@ -49,6 +53,16 @@ void interface_write_intmask(uint16_t value);
    routine d'interruption doit l'acquitter, sinon elle est rappelée dès
    son retour, indéfiniment (comme sur 32X). */
 void interface_clear_vint(void);
+
+/* H Interrupt Clear Register (2000 4018h) : acquitte H_INT pour le CPU
+   appelant (même règle que V_INT). */
+void interface_clear_hint(void);
+
+/* H Count Register (2000 4004h) : une H_INT toutes les (valeur + 1)
+   lignes ; 0 = à chaque ligne (valeur au démarrage). Commun aux deux CPU.
+   Le décompte repart de zéro pendant le VBlank (si HEN = 0). */
+uint16_t interface_read_hcount(void);
+void interface_write_hcount(uint16_t value);
 
 /* ---- Interruptions : vu de la plate-forme ---------------------------------
  */
@@ -60,14 +74,31 @@ void interface_raise_vint(void);
 /* 1 si une V_INT est en attente et démasquée pour ce CPU */
 int interface_vint_active(int cpu);
 
+/* Le VDP signale le HBlank de chaque ligne (inVBlank : ligne hors de
+   l'image). Lève H_INT selon le compteur H et HEN.
+   Contrôle : une H_INT encore en attente au HBlank suivant n'a pas été
+   servie à temps. La valeur écrite par sa routine (SFT, par exemple)
+   arrive alors trop tard pour la ligne voulue : compté dans hintLate. */
+void interface_hblank(int inVBlank);
+
+/* 1 si une H_INT est en attente et démasquée pour ce CPU */
+int interface_hint_active(int cpu);
+
+/* 1 si une H_INT démasquée attend encore sa routine, sur l'un des CPU */
+int interface_hint_waiting(void);
+
 /* Diagnostics */
 typedef struct {
-    unsigned long raised;     /* V_INT levées par le VDP */
-    unsigned long handled[2]; /* routines exécutées, par CPU */
-    unsigned long unacked[2]; /* routines revenues sans acquitter */
+    unsigned long raised;         /* V_INT levées par le VDP */
+    unsigned long handled[2];     /* routines exécutées, par CPU */
+    unsigned long unacked[2];     /* routines revenues sans acquitter */
+    unsigned long hintRaised;     /* H_INT levées (lignes) */
+    unsigned long hintHandled[2]; /* routines H_INT exécutées, par CPU */
+    unsigned long hintLate[2];    /* H_INT pas servies au HBlank suivant */
 } interface_stats;
 
 void interface_count_handled(int cpu, int acknowledged);
+void interface_count_hint_handled(int cpu);
 void interface_get_stats(interface_stats *stats);
 
 #endif

@@ -8,5 +8,5 @@
    Elle n'est faite qu'une fois, à l'initialisation. */
 void fb_init_line_table(int screenHeight) {
     for (int y = 0; y < screenHeight; y++)
-        vdp_dram[y] = (uint16_t)((FB_LINE_TABLE_BYTES + y * FB_WIDTH) / 2);
+        vdp_dram[y] = (uint16_t)((FB_LINE_TABLE_BYTES + y * FB_PITCH) / 2);
 }

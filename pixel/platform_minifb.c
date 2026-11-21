@@ -5,6 +5,7 @@
 
 #include <MiniFB.h>
 #include <pthread.h>
+#include <sched.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -29,8 +30,9 @@
    Ainsi, elle n'occupe pas en permanence un cœur performance, qui reste
    disponible pour l'affichage (MiniFB, Metal, WindowServer). */
 #define SPIN_MARGIN_NS 300000LL /* tourner 300 µs avant une frontière */
-#define MAX_SLEEP_NS 1000000LL  /* rendre les lignes au moins toutes les 1 ms  \
-                                 */
+#define MAX_SLEEP_NS                                                           \
+    1000000LL /* rendre les lignes au moins toutes les 1 ms                    \
+               */
 
 /* ==== État ================================================================ */
 
@@ -100,6 +102,24 @@ static int64_t nowNs(void) {
     struct timespec t;
     clock_gettime(CLOCK_MONOTONIC, &t);
     return (int64_t)t.tv_sec * 1000000000LL + t.tv_nsec;
+}
+
+/* Latence des interruptions. Sur la console, un SH2 prend une
+   interruption en quelques cycles (s'il ne l'a pas masquée). Ici, le
+   thread du CPU doit d'abord obtenir un processeur de l'hôte : sur une
+   machine chargée (ou à 2 cœurs), cela peut prendre plus d'une ligne, et
+   deux H_INT se confondraient. Le simulateur imite donc la garantie du
+   matériel : après une H_INT, la synchro vidéo attend que sa routine
+   l'ait acquittée, en cédant le processeur, au plus HINT_WAIT_NS. Au-delà,
+   la H_INT reste en attente et sera comptée en retard au HBlank suivant :
+   c'est alors une vraie faute du jeu (interruptions masquées, routine trop
+   longue). */
+#define HINT_WAIT_NS 50000 /* 50 µs, moins d'une ligne (63,5 µs) */
+
+static void waitHintServed(void) {
+    const int64_t limit = nowNs() + HINT_WAIT_NS;
+    while (interface_hint_waiting() && nowNs() < limit)
+        sched_yield();
 }
 
 /* Les threads qui tournent en attente active doivent rester sur les cœurs
@@ -222,7 +242,15 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-int platform_running(void) { return _running; }
+/* Appelée dans chaque boucle d'attente du jeu : on y cède le processeur
+   de l'hôte, pour qu'un CPU qui attend (le Slave entre deux images, par
+   exemple) ne prive pas l'autre, ni la synchro vidéo, d'un cœur. Sur une
+   machine à 2 cœurs, sans cela, le Master pouvait prendre ses H_INT avec
+   plus d'une ligne de retard. */
+int platform_running(void) {
+    sched_yield();
+    return _running;
+}
 
 /* ==== Manette =============================================================
    Clavier -> manette Mega Drive. MiniFB repère les touches par leur
@@ -319,12 +347,23 @@ static void interruptHandler(int sig) {
     if (cpu < 0)
         return;
 
-    while (_running && interface_vint_active(cpu)) {
-        if (cpu == PLATFORM_CPU_MASTER)
-            master_vint();
-        else
-            slave_vint();
-        interface_count_handled(cpu, !interface_vint_active(cpu));
+    /* V_INT d'abord (niveau 12), puis H_INT (niveau 10), comme le SH2 */
+    while (_running) {
+        if (interface_vint_active(cpu)) {
+            if (cpu == PLATFORM_CPU_MASTER)
+                master_vint();
+            else
+                slave_vint();
+            interface_count_handled(cpu, !interface_vint_active(cpu));
+        } else if (interface_hint_active(cpu)) {
+            if (cpu == PLATFORM_CPU_MASTER)
+                master_hint();
+            else
+                slave_hint();
+            interface_count_hint_handled(cpu);
+        } else {
+            break;
+        }
     }
 }
 
@@ -436,7 +475,15 @@ static void beginLine(int line, int64_t startNs) {
         /* Le VDP lit la ligne au moment où le faisceau la balaie : un
            changement de palette en cours d'image apparaîtra donc ici. */
         vdp_render_line(line, _renderBuf + (size_t)line * VDP_SCREEN_WIDTH);
-    } else if (line == _displayLines) {
+        /* Puis le HBlank de cette ligne : H_INT. Sa routine a jusqu'au
+           début de la ligne suivante (sur la console, seulement le HBlank,
+           plus court) pour écrire ce qui doit valoir pour elle. */
+        interface_hblank(0);
+        waitHintServed();
+    } else {
+        interface_hblank(1);
+    }
+    if (line == _displayLines) {
         /* Début du VBlank : l'image affichée est complète */
         _vblankStartNs = startNs;
         /* VBlank Mega Drive : le 68000 d'abord, pour que ce qu'il écrit
@@ -513,9 +560,12 @@ static void printStats(const char *when, double seconds) {
 
     fprintf(stderr,
             "[VDP %s%.1f s] V_INT levees %lu | master : traitees %lu, "
-            "non acquittees %lu | slave : traitees %lu, non acquittees %lu\n",
+            "non acquittees %lu | slave : traitees %lu, non acquittees %lu"
+            " | H_INT levees %lu, master traitees %lu (en retard %lu), "
+            "slave traitees %lu (en retard %lu)\n",
             when, seconds, is.raised, is.handled[0], is.unacked[0],
-            is.handled[1], is.unacked[1]);
+            is.handled[1], is.unacked[1], is.hintRaised, is.hintHandled[0],
+            is.hintLate[0], is.hintHandled[1], is.hintLate[1]);
 
     fprintf(stderr,
             "[VDP %s%.1f s] VBlank %lu, vus master %lu (rates %lu), "

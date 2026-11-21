@@ -307,3 +307,121 @@ réétalonné.
 Par CPU et par image : 336 000 cycles en moyenne au lieu de 717 000,
 441 000 au pire au lieu de 951 000. Défilements pairs : 60 images/s.
 ```
+
+---
+
+Décalage d'écran (SFT) choisi ligne par ligne, écrit par le Master en H_INT
+
+**Ce que fait cette version** :
+- Simulateur `pixel/` :
+  - registre de décalage d'écran (`screenShiftRegister`, 2000 4102h, bit
+    SFT) : lu par le VDP à chaque ligne affichée ; avec SFT, le pixel x
+    de l'écran est l'octet x + 1 de la ligne ;
+  - interruption H : masque (bit H), bit HEN (H_INT aussi pendant le
+    VBlank), registre de compteur H (une H_INT toutes les n + 1 lignes),
+    acquittement (`interface_clear_hint`), routines `master_hint` et
+    `slave_hint` (V_INT passe avant H_INT, comme sur le SH2). La H_INT
+    d'une ligne est levée juste après son affichage ;
+  - contrôle : une H_INT encore en attente au HBlank suivant est comptée
+    « en retard » (sa valeur arrive trop tard pour la ligne voulue) ;
+    compteurs affichés avec les statistiques ;
+  - latence des interruptions : sur la console, un SH2 prend une
+    interruption en quelques cycles ; l'hôte, lui, peut tarder à donner un
+    processeur au thread du CPU. Après chaque H_INT, la synchro vidéo
+    attend donc que la routine ait acquitté (50 µs au plus), et
+    `platform_running()`, appelée dans les boucles d'attente du jeu, cède
+    le processeur. Sans cela, sur une machine à 2 cœurs, la moitié des
+    H_INT étaient servies avec plus d'une ligne de retard.
+- Moteur `supervdp/` :
+  - `compose_line` forme les segments sur 322 pixels (de la colonne
+    scrollAX - 1 à scrollAX + 320), compte les mots venant de A et de B,
+    et choisit le décalage de la ligne qui rend pair le plan le plus
+    coûteux en source impaire (un A impair coûte aussi ses mots de
+    frontière). Elle renvoie ce décalage : ligne de 160 mots sans, 161
+    avec ;
+  - frame buffer : 161 mots par ligne (72 640 octets) ;
+  - chaque CPU range le décalage de ses lignes dans une table par frame
+    buffer ; la routine V_INT du Master prend la table du frame buffer
+    affiché (d'après FS) et écrit SFT pour la ligne 0 ; sa routine H_INT
+    l'écrit pour la ligne suivante. Le Master, parce qu'il a la priorité
+    sur le bus ;
+  - code froid : la copie depuis une source impaire, devenue rare, est
+    rangée à part (section `.text.sdram`) et reste en SDRAM ; le code
+    chaud (1 844 octets) tient dans la RAM interne ;
+  - `cost.h` réétalonné (-7 % / +4 %) ; interruptions du Master comptées
+    au modèle à 40 cycles chacune (estimation, non mesurée).
+- Banc `tools/sh2cycles` : options `ccr_od=1` et `ccr_id=1` (bits OD et
+  ID du CCR) ; 160 ou 161 écritures par ligne ; empreinte de ce que
+  l'écran affiche.
+- `tests/test_compose.c` vérifie ce que l'écran affiche, compte tenu du
+  décalage renvoyé, et 160 ou 161 mots écrits une fois chacun.
+- `supervdp.c` : le schéma de déroulement, aplati par clang-format,
+  redessiné en moins de 80 colonnes.
+- Vérifié : `test_compose`, 1 168 576 lignes dont 609 666 décalées, sans
+  erreur ; les 5 scénarios du simulateur complet identiques à la
+  référence ; sur SH2, pixels identiques à l'hôte.
+
+**Mesures** (banc, par CPU et par image, hors écritures FB) :
+- 309 819 cycles en moyenne (336 469 avant), 355 898 au pire (441 039) ;
+  pire image avec ses écritures à 3 cycles : 409 850, soit 1,07 image de
+  1/60 s (1,29 avant) ;
+- trajectoire de la démo, mots copiés depuis une source impaire : 1 194
+  par image au lieu de 16 960 ;
+- selon la parité de xA et xB (moyenne / pire) :
+
+| Parité xA, xB  | Version précédente  | Cette version       |
+|----------------|---------------------|---------------------|
+| pair, pair     | 278 000 / 290 000   | 292 000 / 305 000   |
+| pair, impair   | 333 000 / 358 000   | 332 000 / 353 000   |
+| impair, pair   | 365 000 / 380 000   | 343 000 / 356 000   |
+| impair, impair | 418 000 / 436 000   | 299 000 / 311 000   |
+
+  Le cas pair-pair coûte un peu plus (segments sur 322 pixels, choix par
+  ligne, code froid) ; impair-impair rejoint pair-pair ; quand les
+  parités diffèrent, un plan reste impair sur chaque ligne ;
+- scénarios du simulateur (modèle étalonné) : 0,87 à 0,94 image de
+  1/60 s, sauf parités différentes (« milieu ») : 1,05 ;
+- options du cache, mesurées : OD = 1 deux fois plus lent (787 577 cycles
+  en moyenne en 4 voies) ; ID = 1 en 2 voies + RAM : +22 000 cycles (le
+  code resté en SDRAM n'est plus mis en cache) ; non retenues.
+
+**Ce qui reste pour plus tard** :
+- parités différentes : environ 26 000 cycles à gagner au pire. Pistes :
+  segments impairs courts (environ 22 instructions par mot), mise en
+  place de chaque morceau de fusion, part fixe de chaque ligne (environ
+  140 instructions) ;
+- le coût des interruptions du Master (estimé à 40 cycles) reste à
+  mesurer ;
+- sur la console, la routine H_INT dispose du seul HBlank pour écrire
+  SFT (dans le simulateur, d'une ligne entière) : à vérifier sur un
+  émulateur 32X ;
+- sur une machine à 2 cœurs, le simulateur sert encore 1 à 3 % des H_INT
+  en retard (hors des images capturées par les tests) ;
+- le programme de démarrage SH2 devra mettre le cache en mode 2 voies,
+  recopier le code chaud en C000 0000h, et démasquer V_INT et H_INT sur
+  le Master.
+
+Message de commit proposé :
+
+```
+Décalage d'écran (SFT) choisi ligne par ligne, écrit par le Master en H_INT
+
+compose_line forme ses segments sur 322 pixels et choisit pour chaque
+ligne le décalage d'écran qui rend pair le plan le plus coûteux ; une
+ligne décalée fait 161 mots. Chaque CPU range ses décalages dans la table
+du frame buffer qu'il dessine ; le Master, prioritaire sur le bus, écrit
+SFT en V_INT (ligne 0) et en H_INT (ligne suivante).
+
+Simulateur : registre SFT lu à chaque ligne, interruption H (masque, HEN,
+compteur H, acquittement), H_INT en retard comptées, latence des
+interruptions imitée (attente bornée, attentes du jeu qui cèdent le
+processeur).
+
+Copie depuis une source impaire en code froid (SDRAM), code chaud en RAM
+interne (1 844 octets). Banc : options ccr_od et ccr_id. cost.h
+réétalonné.
+
+Par CPU et par image : 310 000 cycles en moyenne, 356 000 au pire (441 000
+avant) ; impair-impair rejoint pair-pair. Mots en source impaire sur la
+démo : 1 194 par image au lieu de 16 960.
+```

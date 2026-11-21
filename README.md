@@ -71,22 +71,42 @@ sont entièrement transparentes ou entièrement opaques.
 
 Règles d'écriture, reprises d'AMB96 :
 - uniquement des écritures 16 bits, à des adresses paires : chaque mot
-  de l'écran est écrit une seule fois, soit **35 840 écritures par
-  image**, quels que soient les défilements (le surdessin, B puis A par
-  la zone overwrite, en aurait coûté 53 000 à 58 000) ;
-- source impaire : deux `MOV.B` assemblés en un mot ; la décision de
-  parité est prise une fois par ligne et par plan ;
+  de la ligne est écrit une seule fois, soit **35 840 à 36 064
+  écritures par image** (160 mots par ligne, 161 avec décalage d'écran),
+  quels que soient les défilements (le surdessin, B puis A par la zone
+  overwrite, en aurait coûté 53 000 à 58 000) ;
+- source impaire : pixels assemblés en registres (`MOV.L` et décalages
+  pour une tile entière) ; la décision de parité est prise une fois par
+  ligne et par plan ;
 - tiles 16 × 16 alignées sur 16 octets : une ligne de tile = une ligne
   du cache SH2 ;
 - Master et Slave composent une ligne sur deux.
+
+**Décalage d'écran (SFT) ligne par ligne.** Une source impaire coûte
+cher (pixels réassemblés). Le VDP peut décaler l'affichage d'un point
+(registre SFT, 2000 4102h), mais pour toute la ligne : les deux plans
+changent de parité ensemble. `compose_line` choisit donc, pour chaque
+ligne, de la dessiner décalée ou non, de façon à rendre pair le plan qui
+fournit le plus de mots (en haut de l'écran, B ; sur le sol, A). Une
+ligne décalée fait 161 mots (le frame buffer prévoit 161 mots par
+ligne). Chaque CPU range le décalage de ses lignes dans une table, une
+par frame buffer ; pendant l'affichage, le **Master** écrit SFT ligne par
+ligne : sa routine V_INT pour la ligne 0, sa routine H_INT (au HBlank de
+chaque ligne) pour la ligne suivante. C'est le Master parce qu'il a la
+priorité sur le bus.
+
+**Code et cache.** Le moteur suppose le cache du SH2 en mode « 2 voies
++ RAM » : le code chaud de `compose.c` (1,8 Ko) dans les 2 Ko de RAM
+interne, son code froid (copie depuis une source impaire, devenue rare)
+en SDRAM. Voir `tools/sh2cycles`.
 
 ## Mesurer : `VDP_STATS=1`
 
 Toutes les 5 secondes dans la fenêtre, et à chaque capture sans fenêtre :
 
 ```
-acces bus par image : master 17920 | slave 17920 | total 35840 = 46.7 % du plafond 76800
-cycles bus VDP (partages) : 35840 ecritures x 5 = 179200 / 384000 (46.7 %)
+acces bus par image : master 17970 | slave 17970 | total 35940 = 46.8 % du plafond 76800
+cycles bus VDP (partages) : 35940 ecritures x 5 = 179700 / 384000 (46.8 %)
 cycles CPU estimes (modele du jeu + ecritures 3..5 c) : master 203414 + ecritures = 257174..293014 / 384000 ...
 ```
 

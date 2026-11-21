@@ -33,6 +33,8 @@
 typedef struct {
     int16_t hScrollA, hScrollB;
     int16_t vScrollA, vScrollB;
+    int16_t drawBuffer; /* frame buffer dessiné : 0 ou 1 (valeur de FS
+                           quand il sera affiché) */
 } Scene;
 
 /* ---- Mémoire partagée entre les SH2 --------------------------------------

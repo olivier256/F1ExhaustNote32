@@ -23,7 +23,12 @@ PHDRS
 SECTIONS
 {
     . = 0x06000000;
-    .text : { *(EXCLUDE_FILE(*compose.o) .text .text.*) } :sdram
+    /* Tout le code en SDRAM, sauf celui de compose.c, qui va en RAM
+       interne ; son code froid (section .text.sdram) reste en SDRAM. */
+    .text : {
+        *(EXCLUDE_FILE(*compose.o) .text .text.*)
+        *compose.o(.text.sdram)
+    } :sdram
     .rodata : { *(.rodata .rodata.*) } :sdram
     .data : { *(.data .data.*) } :sdram
     .bss : { *(.bss .bss.*) *(COMMON) } :sdram

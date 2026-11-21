@@ -148,6 +148,15 @@ void vdp_print_write_stats(const char *label);
 
 /* Registres */
 extern volatile uint16_t *const bitmapModeRegister;
+
+/* Screen Shift Control Register (2000 4102h), bit SFT : en mode Packed
+   Pixel, décale l'affichage d'un point vers la gauche (le pixel x de
+   l'écran est l'octet x + 1 de la ligne). Le VDP le lit à chaque ligne :
+   une écriture prend effet à la ligne suivante, ce qui permet de le
+   changer ligne par ligne (routine H_INT). Une ligne affichée décalée lit
+   321 octets : prévoir au moins 161 mots par ligne. */
+#define SCREEN_SHIFT_SFT 0x0001
+extern volatile uint16_t *const screenShiftRegister;
 uint16_t vdp_read_fbcr(void);
 void vdp_write_fbcr(uint16_t value);
 

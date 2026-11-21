@@ -16,6 +16,12 @@ void slave_main(void);
 void master_vint(void);
 void slave_vint(void);
 
+/* Routines d'interruption H_INT (même règles ; acquitter par
+   interface_clear_hint). V_INT passe avant H_INT, comme sur le SH2 (niveau
+   12 contre 10). */
+void master_hint(void);
+void slave_hint(void);
+
 /* Routine V_INT du 68000 (le programme Mega Drive de la cartouche).
    Le 68000 n'est pas émulé : la plate-forme appelle cette fonction au
    début de chaque VBlank, depuis la synchro vidéo. Elle doit être très

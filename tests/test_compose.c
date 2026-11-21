@@ -4,10 +4,12 @@
    La référence est un rendu naïf, pixel par pixel, qui ne partage rien
    avec le moteur : pixel (x, y) de l'écran = pixel du plan A s'il est non
    nul, sinon pixel du plan B. Pour chaque ligne composée, on vérifie :
-   - les 320 pixels, contre la référence ;
-   - les écritures : 160 par ligne, toutes en 16 bits, à des adresses
-     paires, chaque mot de la ligne écrit exactement une fois, rien hors
-     de la ligne.
+   - les 320 pixels AFFICHÉS, contre la référence : compose_line renvoie
+     le décalage d'écran de la ligne (SFT) ; avec décalage, le pixel x de
+     l'écran est le pixel x + 1 de la ligne ;
+   - les écritures : 160 par ligne (161 avec décalage), toutes en 16 bits,
+     à des adresses paires, chaque mot de la ligne écrit exactement une
+     fois, rien hors de la ligne.
 
    Jeux d'essai :
    1. la trajectoire de la démo : xA de 0 à 448, xB synchronisé, toutes
@@ -34,6 +36,7 @@
 
 #define SCREEN_HEIGHT 224
 #define LINE_WORDS (FB_WIDTH / 2)
+#define MAX_LINE_WORDS (FB_PITCH / 2)
 
 static const Tileset *const tiles = &asset_tiles;
 static const Tilemap *const planeA = &asset_plane_a;
@@ -47,14 +50,14 @@ static const Tilemap *const planeB = &asset_plane_b;
 #define LINE_OFFSET 0x1000u
 
 static uint8_t fb[VDP_DRAM_SIZE];
-static int wordWrites[LINE_WORDS]; /* écritures de chaque mot de la ligne */
-static long badWrites = 0;         /* hors ligne ou mal alignées */
+static int wordWrites[MAX_LINE_WORDS]; /* écritures de chaque mot */
+static long badWrites = 0;             /* hors ligne ou mal alignées */
 static long writeCount = 0;
 
 void vdp_dram_write16(uint32_t offset, uint16_t pixels) {
     writeCount++;
     if ((offset & 1) || offset < LINE_OFFSET ||
-        offset >= LINE_OFFSET + FB_WIDTH) {
+        offset >= LINE_OFFSET + FB_PITCH) {
         badWrites++;
         return;
     }
@@ -95,32 +98,37 @@ static uint8_t referencePixel(int sx, int xA, int yA, int xB, int yB) {
  */
 
 static long linesChecked = 0;
+static long linesShifted = 0;
 static long failures = 0;
 static ComposeCost cost;
 
 static void checkLine(int xA, int yA, int xB, int yB) {
     memset(wordWrites, 0, sizeof wordWrites);
-    memset(fb + LINE_OFFSET, 0xEE, FB_WIDTH);
+    memset(fb + LINE_OFFSET, 0xEE, FB_PITCH);
     const long writesBefore = writeCount, badBefore = badWrites;
 
-    compose_line(LINE_OFFSET, tiles, planeA, xA, yA, planeB, xB, yB, &cost);
+    const int shift =
+        compose_line(LINE_OFFSET, tiles, planeA, xA, yA, planeB, xB, yB, &cost);
     linesChecked++;
+    linesShifted += shift != 0;
 
-    int ok = writeCount - writesBefore == LINE_WORDS && badWrites == badBefore;
-    for (int w = 0; w < LINE_WORDS; w++)
-        ok &= wordWrites[w] == 1;
+    const int words = LINE_WORDS + shift;
+    int ok = (shift == 0 || shift == 1) && writeCount - writesBefore == words &&
+             badWrites == badBefore;
+    for (int w = 0; w < MAX_LINE_WORDS; w++)
+        ok &= wordWrites[w] == (w < words);
 
     int badX = -1;
     for (int sx = 0; sx < FB_WIDTH && badX < 0; sx++)
-        if (fb[LINE_OFFSET + sx] != referencePixel(sx, xA, yA, xB, yB))
+        if (fb[LINE_OFFSET + shift + sx] != referencePixel(sx, xA, yA, xB, yB))
             badX = sx;
 
     if (!ok || badX >= 0) {
         if (failures < 10)
             fprintf(stderr,
-                    "ECHEC xA=%d yA=%d xB=%d yB=%d : %ld ecritures, %ld "
-                    "mauvaises, premier pixel faux x=%d\n",
-                    xA, yA, xB, yB, writeCount - writesBefore,
+                    "ECHEC xA=%d yA=%d xB=%d yB=%d decalage %d : %ld "
+                    "ecritures, %ld mauvaises, premier pixel faux x=%d\n",
+                    xA, yA, xB, yB, shift, writeCount - writesBefore,
                     badWrites - badBefore, badX);
         failures++;
     }
@@ -245,7 +253,8 @@ int main(int argc, char *argv[]) {
     testAllColumns();
     testRandom();
 
-    printf("%ld lignes verifiees, %ld echecs, %ld ecritures (toutes 16 bits)\n",
-           linesChecked, failures, writeCount);
+    printf("%ld lignes verifiees (%ld decalees), %ld echecs, %ld ecritures "
+           "(toutes 16 bits)\n",
+           linesChecked, linesShifted, failures, writeCount);
     return failures != 0 || badWrites != 0;
 }

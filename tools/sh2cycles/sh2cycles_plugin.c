@@ -122,8 +122,17 @@ static void touch(int set, int way) {
     ageOf[set][way] = 0;
 }
 
-/* Lecture par le cache : 1 si défaut (la ligne est alors chargée) */
-static int cacheRead(uint32_t addr) {
+/* Bits OD et ID du CCR (options ccr_od=1, ccr_id=1) : sur un défaut, la donnée
+   (OD) ou l'instruction (ID) est lue en SDRAM sans remplacer de ligne
+   du cache. La SDRAM travaillant par ligne de 16 octets (32X Hardware
+   Manual), on compte la lecture isolée au prix d'une ligne. */
+static int noDataReplace = 0, noCodeReplace = 0;
+
+/* Lecture par le cache : 1 si défaut (la ligne est alors chargée, sauf
+   si 'replace' vaut 0) */
+static int cacheLookup(uint32_t addr, int replace);
+static int cacheRead(uint32_t addr) { return cacheLookup(addr, 1); }
+static int cacheLookup(uint32_t addr, int replace) {
     const uint32_t line = addr >> 4;
     const int set = line & (SETS - 1);
     const uint32_t tag = line >> 6;
@@ -132,6 +141,8 @@ static int cacheRead(uint32_t addr) {
             touch(set, w);
             return 0;
         }
+    if (!replace)
+        return 1;
     int victim = 0;
     for (int w = 0; w < WAYS; w++) {
         if (!validOf[set][w]) {
@@ -340,7 +351,7 @@ static void onInsn(unsigned int vcpu, void *udata) {
         /* Lecture de l'instruction par le cache (rien à payer depuis la
            RAM interne) */
         if (in->pc < 0x20000000u && !isOnChipRam((uint32_t)in->pc) &&
-            cacheRead((uint32_t)in->pc)) {
+            cacheLookup((uint32_t)in->pc, !noCodeReplace)) {
             cycles += LINE_FILL_CYCLES;
             misses++;
             codeMisses++;
@@ -387,7 +398,7 @@ static void onMem(unsigned int vcpu, qemu_plugin_meminfo_t info, uint64_t vaddr,
         cacheWrite(addr);
         if (measuring)
             cycles += SDRAM_WRITE_CYCLES;
-    } else if (cacheRead(addr) && measuring) {
+    } else if (cacheLookup(addr, !noDataReplace) && measuring) {
         cycles += LINE_FILL_CYCLES;
         misses++;
         countMiss(addr);
@@ -456,6 +467,10 @@ QEMU_PLUGIN_EXPORT int qemu_plugin_install(qemu_plugin_id_t id,
             profileOn = 1;
         if (strcmp(argv[i], "ways=2") == 0)
             WAYS = 2;
+        if (strcmp(argv[i], "ccr_od=1") == 0)
+            noDataReplace = 1;
+        if (strcmp(argv[i], "ccr_id=1") == 0)
+            noCodeReplace = 1;
         if (strncmp(argv[i], "ram=", 4) == 0)
             onChipRam = (uint32_t)strtoul(argv[i] + 4, NULL, 0);
     }

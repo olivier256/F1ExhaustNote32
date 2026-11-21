@@ -5,7 +5,8 @@
 
    Usage : costs PREMIERE_LIGNE      (0 = Master, 1 = Slave)
    Sortie (stdout), une ligne par image :
-     image;lines;aTiles;runs;tileChunks;wordsEven;wordsOdd;wordsMerged;modele;empreinte
+     image;lines;aTiles;runs;tileChunks;wordsEven;wordsOdd;wordsMerged;modele;
+     empreinte;lignes_decalees
    ========================================================================= */
 
 #include "compose.h"
@@ -39,18 +40,23 @@ int main(int argc, char *argv[]) {
         const BenchFrame f = bench_frame(i);
         ComposeCost c;
         memset(&c, 0, sizeof c);
-        for (int y = first; y < BENCH_SCREEN_HEIGHT; y += 2)
-            compose_line(fb_offset(0, y), &asset_tiles, &asset_plane_a, f.xA,
-                         f.yA + y, &asset_plane_b, f.xB, f.yB + y, &c);
+        int shift[BENCH_SCREEN_HEIGHT] = {0}, shifted = 0;
+        for (int y = first; y < BENCH_SCREEN_HEIGHT; y += 2) {
+            shift[y] = compose_line(fb_offset(0, y), &asset_tiles,
+                                    &asset_plane_a, f.xA, f.yA + y,
+                                    &asset_plane_b, f.xB, f.yB + y, &c);
+            shifted += shift[y];
+        }
 
+        /* Empreinte de ce que l'écran affiche (voir bench.c) */
         uint32_t h = 2166136261u;
         for (int y = first; y < BENCH_SCREEN_HEIGHT; y += 2)
             for (int x = 0; x < FB_WIDTH; x++)
-                h = (h ^ fb[fb_offset(x, y)]) * 16777619u;
+                h = (h ^ fb[fb_offset(x + shift[y], y)]) * 16777619u;
 
-        printf("%d;%u;%u;%u;%u;%u;%u;%u;%u;%08x\n", i, c.lines, c.aTiles,
+        printf("%d;%u;%u;%u;%u;%u;%u;%u;%u;%08x;%d\n", i, c.lines, c.aTiles,
                c.runs, c.tileChunks, c.wordsEven, c.wordsOdd, c.wordsMerged,
-               cost_cycles(&c), h);
+               cost_cycles(&c), h, shifted);
     }
     return 0;
 }

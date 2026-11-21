@@ -17,6 +17,8 @@ static int _screenHeight = 224;
 /* Registres */
 static volatile uint16_t _bitmapModeRegister;
 volatile uint16_t *const bitmapModeRegister = &_bitmapModeRegister;
+static volatile uint16_t _screenShiftRegister;
+volatile uint16_t *const screenShiftRegister = &_screenShiftRegister;
 
 /* représente la valeur effectivement appliquée */
 static uint16_t _activeFS = 0;
@@ -360,9 +362,13 @@ void vdp_render_line(int line, uint32_t *rgb) {
     switch (*bitmapModeRegister & 3) {
     case 1: { // PACKED_PIXEL_MODE
         /* Un pixel = un octet, lus dans l'ordre des adresses : le pixel x est
-           l'octet (adresse de ligne * 2 + x), comme sur la vraie 32X. */
-        const uint8_t *pixels =
-            (const uint8_t *)displayFrameBuffer + displayFrameBuffer[line] * 2;
+           l'octet (adresse de ligne * 2 + x), comme sur la vraie 32X. Avec
+           SFT, l'affichage est décalé d'un point : le pixel x est l'octet
+           x + 1. Le registre est lu ici, au moment où la ligne est
+           balayée : sa valeur est celle écrite avant cette ligne. */
+        const uint8_t *pixels = (const uint8_t *)displayFrameBuffer +
+                                displayFrameBuffer[line] * 2 +
+                                (*screenShiftRegister & SCREEN_SHIFT_SFT);
         for (int col = 0; col < VDP_SCREEN_WIDTH; col++)
             rgb[col] = get_palette_color(pixels[col]);
         break;
