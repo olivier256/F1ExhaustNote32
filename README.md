@@ -99,8 +99,14 @@ cycles CPU estimes (modele du jeu + ecritures 3..5 c) : master 203414 + ecriture
 - **Cycles CPU** : le simulateur exécute du code natif et ne mesure pas
   le temps SH2. Le moteur compte ce qu'il fait et le multiplie par des
   coûts unitaires (`supervdp/cost.h`) ; le simulateur ajoute 3 à 5 cycles
-  par écriture du CPU. **C'est une estimation, aux coûts provisoires**,
-  à étalonner sur le code SH2 compilé.
+  par écriture du CPU. Les coûts unitaires sont **étalonnés** par le banc
+  `tools/sh2cycles` : le vrai code compilé pour SH2, exécuté sous qemu
+  avec un modèle de temps du SH2 (voir `tools/sh2cycles/README.md`).
+  C'est un modèle, pas une 32X réelle, mais le nombre d'instructions est
+  exact.
+- **Verdict** : la dernière ligne donne la durée de l'image en images de
+  1/60 s (le CPU le plus lent, ou le bus du VDP). Au-delà de 1, on ne
+  tient pas 60 images/s.
 
 ## Vérifier
 
@@ -135,6 +141,7 @@ transparentes au-dessus), 41 couleurs, 599 tiles.
 | `demo/`                   | contenu de la démo et programme 68000                   |
 | `tools/bmp2c.c`           | convertisseur BMP → C                                   |
 | `tests/`                  | tests                                                   |
+| `tools/sh2cycles/`        | banc SH2 sous qemu : temps du code compilé, étalonnage de `cost.h` |
 
 ## Vers une vraie 32X
 
@@ -142,7 +149,9 @@ transparentes au-dessus), 41 couleurs, 599 tiles.
   la ROM, un chargement de cache coûterait bien plus cher.
 - `vdp_dram_write16()` devient une écriture directe en 2400 0000h +
   offset ; `SHARED()` donne déjà l'adresse cache-through sur SH2.
-- Le temps réel reste à mesurer (chaîne `sh-elf-gcc`, émulateur 32X).
+- `tools/sh2cycles/build-tools.sh` construit la chaîne `sh-elf` (gcc
+  13.2) qui servira aussi pour la console ; le temps reste à recouper
+  sur un émulateur 32X.
 
 ## Licence
 

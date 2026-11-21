@@ -84,3 +84,88 @@ estimés (modèle de coûts provisoire).
 Tests : 1 168 576 lignes contre un rendu de référence, et 5 scénarios
 du simulateur complet identiques octet pour octet.
 ```
+
+---
+
+Banc sh2cycles : temps SH2 mesuré, modèle de coûts étalonné
+
+**Ce que fait cette version** :
+- `tools/sh2cycles/` : banc d'essai qui mesure le temps du **vrai code**
+  de `compose.c`, compilé pour SH2 (`sh-elf-gcc` 13.2, `-m2 -O2`, sans les
+  compteurs) et lié aux adresses de la 32X (SDRAM en 0600 0000h, frame
+  buffer en 2400 0000h) :
+  - `sh2cycles_plugin.c` : greffon qemu qui applique un modèle du SH2 à
+    chaque instruction exécutée (cycles par instruction, branchements pris
+    ou non, dépendance après chargement, cache de 4 Ko 4 voies LRU commun
+    aux instructions et aux données, défaut = 12 cycles, écriture en SDRAM
+    = +1) ; les écritures dans le frame buffer sont comptées à part ;
+    option `profile=on` : exécutions par adresse ;
+  - `bench.c` compose les lignes d'un CPU pour 180 images (`frames.h` :
+    trajectoire de la démo et défilements quelconques), un programme par
+    CPU (chacun son cache) ; `costs.c` calcule sur l'hôte les compteurs du
+    modèle pour les mêmes images ; `fit.py` vérifie les pixels (empreintes)
+    et ajuste les coûts unitaires par moindres carrés ;
+  - `build-tools.sh` construit binutils 2.42, gcc 13.2 pour `sh-elf`
+    (SH2, gros-boutiste, libgcc) et qemu 8.2.2 avec les greffons. La même
+    chaîne servira pour la console.
+- `pixel/vdp.h` : sur SH2, `vdp_dram_write*()` et `vdp_overwrite_write*()`
+  deviennent des écritures directes (2400 0000h, 2402 0000h + offset),
+  comme sur la console.
+- `supervdp/cost.h` : coûts unitaires étalonnés. Le coût d'un mot copié
+  depuis une source paire est compris dans celui de la ligne (chaque ligne
+  écrit 160 mots : on ne peut pas les séparer).
+- `VDP_STATS=1` : nouvelle ligne, la durée de la dernière image en images
+  de 1/60 s (CPU le plus lent ou bus du VDP), et le verdict 60 images/s.
+- Vérifié : le code SH2 dessine les mêmes pixels que l'hôte (360 images,
+  empreintes identiques) et écrit 17 920 mots par CPU et par image ; le
+  modèle étalonné reproduit les temps du banc de -3 % à +6 % ;
+  `test_compose` et les 5 scénarios du simulateur passent toujours.
+
+**Mesures** (par CPU et par image, hors écritures FB) :
+- 542 640 à 950 826 cycles, 717 077 en moyenne ; 508 859 instructions en
+  moyenne : **le nombre d'instructions dépasse à lui seul le budget**
+  (384 000 cycles) ;
+- avec les écritures (3 cycles) : pire image 1 004 586 cycles, soit
+  2,6 images de 1/60 s. La version actuelle tiendrait environ **30
+  images/s** en moyenne, 20 dans le pire cas. L'ancien modèle provisoire
+  sous-estimait d'un facteur 3,5 ;
+- répartition des instructions : copie source impaire 33 %, formation
+  des segments (`compose_line`) 30 %, copie source paire 18 %, fusion 9 %,
+  divisions (`%`, ___sdivsi3) 7 %, décalages variables (___lshrsi3) 4 % ;
+- le coût n'est pas dans les boucles de copie (4 instructions par mot en
+  source paire, 11 en impaire), mais autour : environ 60 instructions par
+  tile de A examinée et par morceau de tile copié. Le SH2 n'a ni décaleur
+  à distance variable (appel de libgcc pour `>> (row * 2)`, 4 SHAR pour
+  `x >> 4` signé), ni division (`%` à chaque ligne) ;
+- SDRAM occupée par le banc (code, tiles, pile) : 169 556 octets sur
+  262 144 (65 %).
+
+**Ce qui reste pour plus tard** :
+- réécrire le C pour le SH2, en mesurant chaque étape avec le banc :
+  classes des lignes de tile rangées par ligne (un octet, sans décalage
+  variable) ; parcours des tiles par pointeurs, décalages non signés,
+  plus de `%` ni de boucle `advance()` par morceau ; chemin impair sans
+  `EXTU.B` ;
+- ensuite seulement, l'assembleur en option ;
+- recouper le modèle de temps sur un émulateur 32X.
+
+Message de commit proposé :
+
+```
+Banc sh2cycles : temps SH2 mesuré, modèle de coûts étalonné
+
+tools/sh2cycles : compose.c compilé pour SH2 (sh-elf-gcc 13.2 -m2 -O2),
+exécuté sous qemu avec un greffon qui applique un modèle de temps du SH2
+(cycles par instruction, branchements, dépendances, cache de 4 Ko,
+SDRAM). Les pixels sont vérifiés contre l'hôte, et les coûts unitaires
+de supervdp/cost.h ajustés par moindres carrés (-3 % à +6 %).
+build-tools.sh construit la chaîne sh-elf et qemu avec les greffons.
+
+Sur SH2, vdp_dram_write*() écrit directement dans le frame buffer.
+VDP_STATS=1 donne la durée de l'image en images de 1/60 s.
+
+Mesure : 717 000 cycles par CPU et par image en moyenne, 1 000 000 au
+pire écritures comprises : environ 30 images/s, pas 60. Le temps passe
+autour des boucles de copie (segments, morceaux de tile, décalages
+variables et divisions, absents du SH2).
+```

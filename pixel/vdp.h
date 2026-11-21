@@ -39,9 +39,24 @@ extern uint16_t vdp_palette[VDP_PALETTE_SIZE];
    - 32 bits : quatre pixels, même ordre. offset multiple de 4.
    Un accès mal aligné ou hors de la DRAM provoque, comme sur SH2, une
    erreur d'adresse : le simulateur s'arrête avec un message. */
+#if defined(__sh__)
+/* Sur SH2 (console, ou banc d'essai tools/sh2cycles) : de simples
+   écritures à l'adresse de la zone, sans cache. */
+#define VDP_OVERWRITE_ADDRESS 0x24020000u
+static inline void vdp_overwrite_write8(uint32_t offset, uint8_t pixel) {
+    *(volatile uint8_t *)(VDP_OVERWRITE_ADDRESS + offset) = pixel;
+}
+static inline void vdp_overwrite_write16(uint32_t offset, uint16_t pixels) {
+    *(volatile uint16_t *)(VDP_OVERWRITE_ADDRESS + offset) = pixels;
+}
+static inline void vdp_overwrite_write32(uint32_t offset, uint32_t pixels) {
+    *(volatile uint32_t *)(VDP_OVERWRITE_ADDRESS + offset) = pixels;
+}
+#else
 void vdp_overwrite_write8(uint32_t offset, uint8_t pixel);
 void vdp_overwrite_write16(uint32_t offset, uint16_t pixels);
 void vdp_overwrite_write32(uint32_t offset, uint32_t pixels);
+#endif
 
 /* ---- Écritures normales ---------------------------------------------------
    Mêmes règles que ci-dessus (offset, ordre des octets, alignement), mais
@@ -50,9 +65,25 @@ void vdp_overwrite_write32(uint32_t offset, uint32_t pixels);
    vdp_dram[...] = BE16(...). Pas pour la table de lignes, que le
    simulateur relit comme des mots de l'hôte (voir bigendian.h).
    Sur console : *(volatile uint16_t *)(0x24000000 + offset) = pixels. */
+#if defined(__sh__)
+/* Sur SH2 : écritures directes dans le frame buffer de dessin, sans cache,
+   comme sur la console. Pas de compteurs : ils sont l'affaire du
+   simulateur (ou du banc tools/sh2cycles). */
+#define VDP_DRAM_ADDRESS 0x24000000u
+static inline void vdp_dram_write8(uint32_t offset, uint8_t pixel) {
+    *(volatile uint8_t *)(VDP_DRAM_ADDRESS + offset) = pixel;
+}
+static inline void vdp_dram_write16(uint32_t offset, uint16_t pixels) {
+    *(volatile uint16_t *)(VDP_DRAM_ADDRESS + offset) = pixels;
+}
+static inline void vdp_dram_write32(uint32_t offset, uint32_t pixels) {
+    *(volatile uint32_t *)(VDP_DRAM_ADDRESS + offset) = pixels;
+}
+#else
 void vdp_dram_write8(uint32_t offset, uint8_t pixel);
 void vdp_dram_write16(uint32_t offset, uint16_t pixels);
 void vdp_dram_write32(uint32_t offset, uint32_t pixels);
+#endif
 
 /* ---- Compteurs d'écritures dans le frame buffer ---------------------------
    Le simulateur ne mesure pas le temps SH2, mais il peut compter ce qui

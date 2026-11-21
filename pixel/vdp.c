@@ -249,6 +249,29 @@ void vdp_print_write_stats(const char *label) {
                 100.0 * hi / VDP_SH2_CYCLES_PER_FRAME, ws.maxCpuCycles[cpu]);
     }
     fprintf(stderr, "\n");
+
+    /* Durée de l'image, en images de 1/60 s : le CPU le plus lent (au
+       mieux, écritures à 3 cycles) ou le bus du VDP. Au-delà de 1, on ne
+       tient pas 60 images/s. */
+    double frames = (double)drain / VDP_SH2_CYCLES_PER_FRAME;
+    int declared = 0;
+    for (int cpu = 0; cpu < PLATFORM_CPU_COUNT; cpu++) {
+        const uint32_t model = ws.last.cpuCycles[cpu];
+        if (model == 0)
+            continue;
+        declared = 1;
+        const double f = (double)(model + vdp_bus_accesses(&ws.last, cpu) *
+                                              VDP_FB_WRITE_CYCLES) /
+                         VDP_SH2_CYCLES_PER_FRAME;
+        if (f > frames)
+            frames = f;
+    }
+    if (declared)
+        fprintf(
+            stderr,
+            "[%s] derniere image : %.2f image(s) de 1/60 s au mieux -> %s\n",
+            label, frames,
+            frames <= 1.0 ? "60 images/s" : "moins de 60 images/s");
 }
 
 /* ---- Écritures ---------------------------------------------------------- */

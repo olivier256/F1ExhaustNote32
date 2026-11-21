@@ -7,17 +7,25 @@
    Modèle de coûts : cycles SH2 estimés.
 
    Le simulateur exécute le moteur en code natif : il ne mesure pas le
-   temps SH2. Le moteur compte donc ce qu'il fait (mots copiés selon le
-   chemin, morceaux de tile lus, segments...), et multiplie par un coût
-   unitaire en cycles. Le résultat est déclaré au simulateur
+   temps SH2. Le moteur compte donc ce qu'il fait (lignes, segments,
+   morceaux de tile lus, mots copiés selon le chemin...), et multiplie par
+   un coût unitaire en cycles. Le résultat est déclaré au simulateur
    (vdp_count_cpu_cycles), qui ajoute lui-même le coût des écritures dans
    le frame buffer (3 cycles, 5 si le FIFO est plein) et l'affiche avec
    VDP_STATS=1.
 
-   LES COÛTS UNITAIRES SONT PROVISOIRES : ils sont déduits des suites
-   d'instructions SH2 qu'on attend pour chaque chemin, pas mesurés. Ils
-   seront étalonnés sur le code SH2 compilé (banc d'essai, émulateur 32X).
-   Les écritures dans le frame buffer n'y figurent pas.
+   Les coûts unitaires sont ÉTALONNÉS par le banc tools/sh2cycles : le
+   vrai code de compose.c, compilé pour SH2 (gcc 13.2 -m2 -O2), exécuté
+   sous qemu avec un modèle de temps du SH2 (cycles par instruction,
+   branchements, dépendances, cache de 4 Ko, SDRAM). Ajustement par
+   moindres carrés sur 360 images : le modèle ci-dessous reproduit les
+   temps du banc à -3 % / +6 % près. Les refaire après toute modification
+   de compose.c : tools/sh2cycles/run.sh imprime les nouvelles valeurs.
+
+   Chaque ligne écrit exactement 160 mots : le coût d'un mot copié depuis
+   une source paire ne se distingue pas du coût fixe d'une ligne. Il est
+   compté dans CYCLES_LINE ; les coûts par mot sont des surcoûts par
+   rapport à lui.
 
    Sur SH2, les compteurs disparaissent (sauf compilation avec
    SUPERVDP_COST) : le moteur n'est pas ralenti par sa propre mesure.
@@ -43,16 +51,16 @@ typedef struct {
     uint32_t wordsMerged; /* mots fusionnés pixel par pixel (A sur B) */
 } ComposeCost;
 
-/* Coûts unitaires, en cycles SH2, hors écriture dans le frame buffer.
-   Une ligne du cache chargée depuis la SDRAM : 12 cycles (8 mots en
-   rafale, 32X Hardware Manual, « SDRAM Access Time »). */
-#define CYCLES_LINE 40        /* appel, plans, parités, boucle */
-#define CYCLES_A_TILE 12      /* numéro de tile, classe, regroupement */
-#define CYCLES_RUN 20         /* choix du chemin, positions dans A et B */
-#define CYCLES_TILE_CHUNK 22  /* adresse de la tile (10) + cache (12) */
-#define CYCLES_WORD_EVEN 4    /* MOV.W lu, boucle (DT, BF/S, ADD) */
-#define CYCLES_WORD_ODD 7     /* 2 MOV.B, SHLL8, OR, EXTU, boucle */
-#define CYCLES_WORD_MERGED 16 /* 4 octets lus, 2 tests, assemblage */
+/* Coûts unitaires, en cycles SH2, hors écritures dans le frame buffer.
+   Étalonnés par tools/sh2cycles (2026-11-21, compose.c de la version
+   « deux plans superposés »). */
+#define CYCLES_LINE 1930      /* fixe par ligne, dont 160 mots source paire */
+#define CYCLES_A_TILE 41      /* tile de A examinée (classe, regroupement) */
+#define CYCLES_RUN 33         /* segment : choix du chemin, positions */
+#define CYCLES_TILE_CHUNK 69  /* morceau de tile : adresse, cache, boucle */
+#define CYCLES_WORD_EVEN 0    /* compté dans CYCLES_LINE */
+#define CYCLES_WORD_ODD 16    /* surcoût d'un mot source impaire */
+#define CYCLES_WORD_MERGED 92 /* surcoût d'un mot fusionné */
 
 static inline uint32_t cost_cycles(const ComposeCost *c) {
     return c->lines * CYCLES_LINE + c->aTiles * CYCLES_A_TILE +
