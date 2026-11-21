@@ -4,10 +4,13 @@
 # étalonne le modèle de coûts du simulateur (supervdp/cost.h).
 #
 # 1. Compile supervdp/compose.c pour SH2 (sh-elf-gcc -m2, -O2, sans les
-#    compteurs), avec le banc bench.c, aux adresses de la 32X (bench.ld).
+#    compteurs), avec le banc bench.c, aux adresses de la 32X.
 # 2. L'exécute sous qemu-sh4eb avec le greffon sh2cycles, qui applique le
 #    modèle de temps du SH2 (cycles par instruction, branchements,
-#    dépendances, cache de 4 Ko et SDRAM). Un programme par CPU.
+#    dépendances, cache et SDRAM). Un programme par CPU.
+#    Cache : par défaut en mode « 2 voies + RAM », le code de compose.c
+#    dans la RAM interne (bench_ram.ld), comme le moteur le suppose.
+#    CACHE=4 : cache en 4 voies, tout en SDRAM (bench.ld), pour comparer.
 # 3. Calcule sur l'hôte les compteurs du modèle pour les mêmes images,
 #    vérifie que le code SH2 dessine les mêmes pixels, et ajuste les
 #    coûts unitaires (fit.py).
@@ -55,6 +58,19 @@ cc -std=c99 -O2 -Wall $INC -o "$OUT/costs" $T/costs.c supervdp/compose.c \
 "$OUT/costs" 1 >"$OUT/costs_slave.csv"
 
 # ---- SH2 : le banc ----------------------------------------------------------
+if [ "${CACHE:-ram}" = 4 ]; then
+  LDSCRIPT="-T $T/bench.ld"
+  PLUGIN_OPTIONS=""
+  echo "Cache : 4 voies (4 Ko), tout le programme en SDRAM"
+else
+  # qemu refuse les adresses au-delà de 2 Go : la RAM interne (C000 0000h
+  # sur SH2) est remplacée par 5000 0000h, pour l'édition de liens comme
+  # pour le greffon.
+  LDSCRIPT="-T $T/bench_ram.ld -Wl,--defsym,RAM_BASE=0x50000000"
+  PLUGIN_OPTIONS=",ways=2,ram=0x50000000"
+  echo "Cache : 2 voies (2 Ko) + RAM interne (2 Ko) avec le code de compose.c"
+fi
+
 CFLAGS="-m2 -mb -O2 -std=c99 -ffreestanding -fno-builtin -Wall $INC"
 "${SH_ELF}gcc" $CFLAGS -c supervdp/compose.c -o "$OUT/compose.o"
 "${SH_ELF}gcc" $CFLAGS -c "$OUT/demo_assets.c" -o "$OUT/assets.o"
@@ -66,15 +82,18 @@ for cpu in master slave; do
     -o "$OUT/bench_$cpu.o"
   # Segments alignés sur 4 Ko : qemu (mode utilisateur Linux) les projette
   # en mémoire page par page.
-  "${SH_ELF}gcc" -m2 -mb -nostdlib -T $T/bench.ld -Wl,-z,max-page-size=0x1000 \
+  "${SH_ELF}gcc" -m2 -mb -nostdlib $LDSCRIPT -Wl,-z,max-page-size=0x1000 \
     -Wl,--no-warn-rwx-segments -o "$OUT/bench_$cpu.elf" \
     "$OUT/start.o" "$OUT/bench_$cpu.o" "$OUT/compose.o" "$OUT/assets.o" -lgcc
 done
 
-# Taille en SDRAM (256 Ko sur 32X) : code + données + tiles + pile
+# Taille en SDRAM (256 Ko sur 32X) : code + données + tiles + pile ; et
+# code en RAM interne (2 Ko au plus, vérifié par bench_ram.ld)
 "${SH_ELF}size" -A "$OUT/bench_master.elf" | awk '
   $1 ~ /^\.(text|rodata|data|bss|stack)$/ { n += $2 }
-  END { printf "SDRAM occupee par le banc : %d octets sur 262144 (%.0f %%)\n", n, 100*n/262144 }'
+  $1 == ".ram" { ram = $2 }
+  END { printf "SDRAM occupee par le banc : %d octets sur 262144 (%.0f %%)\n", n, 100*n/262144
+        if (ram) printf "Code en RAM interne : %d octets sur 2048\n", ram }'
 
 # ---- Greffon qemu -----------------------------------------------------------
 cc -O2 -shared -fPIC -Wall -I"$QEMU_INCLUDE" $(pkg-config --cflags glib-2.0) \
@@ -82,7 +101,7 @@ cc -O2 -shared -fPIC -Wall -I"$QEMU_INCLUDE" $(pkg-config --cflags glib-2.0) \
 
 # ---- Mesure -----------------------------------------------------------------
 for cpu in master slave; do
-  if ! "$QEMU" -plugin "$OUT/libsh2cycles.so" "$OUT/bench_$cpu.elf" \
+  if ! "$QEMU" -plugin "$OUT/libsh2cycles.so$PLUGIN_OPTIONS" "$OUT/bench_$cpu.elf" \
     >"$OUT/prints_$cpu.txt" 2>"$OUT/cycles_$cpu.txt"; then
     echo "qemu : echec du banc $cpu :"
     grep -v '^sh2cycles;' "$OUT/cycles_$cpu.txt" | head -5

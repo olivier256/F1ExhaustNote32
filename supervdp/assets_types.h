@@ -52,6 +52,12 @@ typedef struct {
     const uint32_t *rowClasses; /* une entrée par tile */
 } Tileset;
 
+/* Les TILE_SIZE pixels de la ligne 'row' de la tile 'tile' */
+static inline const uint8_t *tile_row(const Tileset *tiles, unsigned tile,
+                                      unsigned row) {
+    return tiles->pixels + (uint32_t)tile * TILE_PIXELS + row * TILE_SIZE;
+}
+
 /* Plan : grille de widthTiles x heightTiles numéros de tile (16 bits),
    ligne par ligne. Dimensions quelconques : le plan boucle dans les deux
    directions. */

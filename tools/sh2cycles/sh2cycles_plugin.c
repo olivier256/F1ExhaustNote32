@@ -28,8 +28,16 @@
    - 2000 0000h et 2000 0004h : marqueurs du banc d'essai. Une écriture
      en 2000 0000h ouvre une fenêtre de mesure, une écriture en
      2000 0004h la ferme et imprime sur stderr :
-         sh2cycles;fenetre;cycles;instructions;defauts_cache;ecritures_fb
+         sh2cycles;fenetre;cycles;instructions;defauts_cache;ecritures_fb;
+         defauts_cache_instructions
      (cycles hors écritures dans le frame buffer).
+
+   Option ways=2 : mode « 2 voies + RAM » du cache (CCR, bit TW) : le
+   cache n'a plus que 2 voies (2 Ko), et les 2 Ko libérés deviennent une
+   RAM interne en C000 0000h - C000 07FFh, sans attente ni défaut : on
+   peut y exécuter du code et y ranger des données. Option ram=adresse :
+   adresse de remplacement de cette RAM (qemu en mode utilisateur refuse
+   les adresses au-delà de 2 Go).
 
    Non modélisé : conflit entre lecture d'instruction et accès aux
    données, partage du bus avec l'autre SH2 (SDRAM), attente sur le FIFO.
@@ -77,15 +85,34 @@ typedef struct {
 /* Profil (option profile=on) : toutes les instructions traduites */
 static int profileOn = 0;
 static GPtrArray *allInsns = NULL;
+static GHashTable *missLines = NULL; /* ligne de 16 octets -> défauts */
+
+static void countMiss(uint32_t addr) {
+    if (!profileOn)
+        return;
+    gpointer key = GUINT_TO_POINTER(addr & ~15u);
+    g_hash_table_insert(
+        missLines, key,
+        GUINT_TO_POINTER(GPOINTER_TO_UINT(g_hash_table_lookup(missLines, key)) +
+                         1));
+}
 
 /* ---- Cache SH2 : 64 entrées x 4 voies, lignes de 16 octets ------------- */
 
 #define SETS 64
-#define WAYS 4
+#define MAX_WAYS 4
 
-static uint32_t tagOf[SETS][WAYS];
-static uint8_t validOf[SETS][WAYS];
-static uint8_t ageOf[SETS][WAYS]; /* 0 = le plus récent */
+static int WAYS = 4; /* 2 en mode « 2 voies + RAM » (option ways=2) */
+static uint32_t tagOf[SETS][MAX_WAYS];
+static uint8_t validOf[SETS][MAX_WAYS];
+static uint8_t ageOf[SETS][MAX_WAYS]; /* 0 = le plus récent */
+
+/* RAM interne du mode « 2 voies + RAM » : accès sans attente */
+#define ONCHIP_RAM_SIZE 0x800u
+static uint32_t onChipRam = 0xC0000000u; /* option ram=adresse */
+static int isOnChipRam(uint32_t addr) {
+    return WAYS == 2 && addr - onChipRam < ONCHIP_RAM_SIZE;
+}
 
 static void touch(int set, int way) {
     const uint8_t old = ageOf[set][way];
@@ -137,7 +164,7 @@ static void cacheWrite(uint32_t addr) {
 
 static int measuring = 0;
 static int windowNo = 0;
-static uint64_t cycles, insns, misses, fbWrites;
+static uint64_t cycles, insns, misses, codeMisses, fbWrites;
 
 static const Insn *previous = NULL; /* instruction précédente */
 static const Insn *pendingBranch = NULL;
@@ -145,7 +172,7 @@ static int pendingCountdown = 0; /* instructions avant de juger le saut */
 
 static void startWindow(void) {
     measuring = 1;
-    cycles = insns = misses = fbWrites = 0;
+    cycles = insns = misses = codeMisses = fbWrites = 0;
 }
 
 static void stopWindow(void) {
@@ -153,8 +180,9 @@ static void stopWindow(void) {
         return;
     measuring = 0;
     fprintf(stderr,
-            "sh2cycles;%d;%" PRIu64 ";%" PRIu64 ";%" PRIu64 ";%" PRIu64 "\n",
-            windowNo++, cycles, insns, misses, fbWrites);
+            "sh2cycles;%d;%" PRIu64 ";%" PRIu64 ";%" PRIu64 ";%" PRIu64
+            ";%" PRIu64 "\n",
+            windowNo++, cycles, insns, misses, fbWrites, codeMisses);
 }
 
 /* ---- Décodage --------------------------------------------------------------
@@ -309,10 +337,14 @@ static void onInsn(unsigned int vcpu, void *udata) {
         if (previous != NULL && previous->loadDest >= 0 &&
             readsRegister(in->op, previous->loadDest))
             cycles++;
-        /* Lecture de l'instruction par le cache */
-        if (in->pc < 0x20000000u && cacheRead((uint32_t)in->pc)) {
+        /* Lecture de l'instruction par le cache (rien à payer depuis la
+           RAM interne) */
+        if (in->pc < 0x20000000u && !isOnChipRam((uint32_t)in->pc) &&
+            cacheRead((uint32_t)in->pc)) {
             cycles += LINE_FILL_CYCLES;
             misses++;
+            codeMisses++;
+            countMiss((uint32_t)in->pc);
         }
     } else if (in->pc < 0x20000000u) {
         cacheRead((uint32_t)in->pc); /* le cache vit aussi hors fenêtre */
@@ -341,6 +373,8 @@ static void onMem(unsigned int vcpu, qemu_plugin_meminfo_t info, uint64_t vaddr,
         return;
     }
 
+    if (isOnChipRam(addr))
+        return; /* RAM interne : 1 cycle, déjà compté avec l'instruction */
     if (addr >= FB_START && addr < FB_END) {
         if (store && measuring)
             fbWrites++;
@@ -356,6 +390,7 @@ static void onMem(unsigned int vcpu, qemu_plugin_meminfo_t info, uint64_t vaddr,
     } else if (cacheRead(addr) && measuring) {
         cycles += LINE_FILL_CYCLES;
         misses++;
+        countMiss(addr);
     }
 }
 
@@ -404,16 +439,28 @@ static void onExit(qemu_plugin_id_t id, void *p) {
                     in->op, n);
         i = j;
     }
+    GHashTableIter it;
+    gpointer key, value;
+    g_hash_table_iter_init(&it, missLines);
+    while (g_hash_table_iter_next(&it, &key, &value))
+        fprintf(stderr, "defaut;%08x;%u\n", GPOINTER_TO_UINT(key),
+                GPOINTER_TO_UINT(value));
 }
 
 QEMU_PLUGIN_EXPORT int qemu_plugin_install(qemu_plugin_id_t id,
                                            const qemu_info_t *info, int argc,
                                            char **argv) {
     (void)info;
-    for (int i = 0; i < argc; i++)
+    for (int i = 0; i < argc; i++) {
         if (strcmp(argv[i], "profile=on") == 0)
             profileOn = 1;
+        if (strcmp(argv[i], "ways=2") == 0)
+            WAYS = 2;
+        if (strncmp(argv[i], "ram=", 4) == 0)
+            onChipRam = (uint32_t)strtoul(argv[i] + 4, NULL, 0);
+    }
     allInsns = g_ptr_array_new();
+    missLines = g_hash_table_new(g_direct_hash, g_direct_equal);
     qemu_plugin_register_vcpu_tb_trans_cb(id, onTranslate);
     qemu_plugin_register_atexit_cb(id, onExit, NULL);
     return 0;

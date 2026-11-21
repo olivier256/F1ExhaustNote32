@@ -44,7 +44,8 @@ def load(folder, cpu):
         if line.startswith("sh2cycles;"):
             p = line.strip().split(";")
             measured.append({"cycles": int(p[2]), "insns": int(p[3]),
-                             "misses": int(p[4]), "fb": int(p[5])})
+                             "misses": int(p[4]), "fb": int(p[5]),
+                             "codeMisses": int(p[6]) if len(p) > 6 else 0})
     prints = [l.strip() for l in open("%s/prints_%s.txt" % (folder, cpu))]
     if not (len(costs) == len(measured) == len(prints)):
         sys.exit("%s : nombres d'images differents (%d, %d, %d)"
@@ -83,8 +84,9 @@ def main():
           % (cycles.min(), cycles.mean(), cycles.max()))
     print("  instructions : min %d, moyenne %d, max %d"
           % (insns.min(), insns.mean(), insns.max()))
-    print("  defauts de cache : moyenne %d (%d cycles)"
-          % (misses.mean(), misses.mean() * 12))
+    codeMisses = np.array([m["codeMisses"] for m in ys], dtype=float)
+    print("  defauts de cache : moyenne %d (%d cycles), dont instructions %d"
+          % (misses.mean(), misses.mean() * 12, codeMisses.mean()))
     worst = cycles.max()
     for label, per in (("3 cycles", 3), ("5 cycles", 5)):
         total = worst + FB_WRITES_PER_CPU * per
@@ -98,10 +100,21 @@ def main():
 
     names = [f for f, _ in FITTED]
     A = np.array([[r[f] for f in names] for r in rows], dtype=float)
-    coef, *_ = np.linalg.lstsq(A, cycles, rcond=None)
+    # Moindres carrés à coûts positifs ou nuls : certains compteurs varient
+    # presque ensemble (112 lignes par CPU et par image, une vingtaine de
+    # tiles par ligne), et l'ajustement libre peut donner un coût négatif.
+    # Un coût négatif est fixé à 0 et l'on ajuste à nouveau les autres.
+    active = list(range(len(names)))
+    while True:
+        sub, *_ = np.linalg.lstsq(A[:, active], cycles, rcond=None)
+        if (sub >= 0).all():
+            break
+        active = [j for j, k in zip(active, sub) if k >= 0]
+    coef = np.zeros(len(names))
+    coef[active] = sub
     pred = A @ coef
     err = (pred - cycles) / cycles
-    print("Nouveau modele (moindres carres) : ecart moyen %+.2f %%, de %+.2f %% a "
+    print("Nouveau modele (moindres carres, couts >= 0) : ecart moyen %+.2f %%, de %+.2f %% a "
           "%+.2f %%, ecart-type %.2f %%"
           % (100 * err.mean(), 100 * err.min(), 100 * err.max(), 100 * err.std()))
     print()

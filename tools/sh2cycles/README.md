@@ -21,9 +21,18 @@ donc des cycles CPU **estimés**, d'après le modèle de coûts de
      multiplications ;
    - +1 cycle quand une instruction lit le registre que la précédente
      vient de charger ;
-   - cache de 4 Ko (4 voies, lignes de 16 octets, LRU, commun aux
-     instructions et aux données, écriture simultanée) : +12 cycles par
-     défaut (une ligne depuis la SDRAM), +1 par écriture en SDRAM ;
+   - cache (lignes de 16 octets, LRU, commun aux instructions et aux
+     données, écriture simultanée) : +12 cycles par défaut (une ligne
+     depuis la SDRAM), +1 par écriture en SDRAM ;
+   - par défaut, le cache est en mode « 2 voies + RAM » (registre CCR du
+     SH2 ; 32X Hardware Manual, « Cache ») : 2 Ko de cache à 2 voies, et
+     2 Ko de RAM interne en C000 0000h, sans attente, où se trouve le code
+     de `compose.c` (`bench_ram.ld`). C'est la configuration que suppose
+     le moteur : le code de rendu ne subit plus aucun défaut de cache,
+     même quand les tiles lues en continu remplissent le cache. qemu
+     refusant les adresses au-delà de 2 Go, la RAM interne y est placée
+     en 5000 0000h ; le temps simulé est le même. `CACHE=4` : cache en
+     4 voies et tout en SDRAM (`bench.ld`), pour comparer ;
    - les écritures dans le frame buffer sont comptées à part (le
      simulateur leur compte 3 à 5 cycles).
    Un programme par CPU : chacun a son propre cache.
@@ -71,11 +80,16 @@ La même chaîne `sh-elf` servira à compiler SuperVDP pour la vraie 32X.
 ## Profil : où passe le temps
 
 ```sh
-~/opt/qemu/bin/qemu-sh4eb -plugin build/sh2cycles/libsh2cycles.so,profile=on \
+~/opt/qemu/bin/qemu-sh4eb \
+    -plugin build/sh2cycles/libsh2cycles.so,ways=2,ram=0x50000000,profile=on \
     build/sh2cycles/bench_master.elf >/dev/null 2>profil.txt
 ```
 
-Les lignes `profil;adresse;opcode;exécutions` donnent le nombre
-d'exécutions de chaque instruction pendant les mesures ; avec
-`sh-elf-objdump -d build/sh2cycles/bench_master.elf`, on retrouve les
-boucles chères.
+- `profil;adresse;opcode;exécutions` : exécutions de chaque instruction
+  pendant les mesures ; avec `sh-elf-objdump -d
+  build/sh2cycles/bench_master.elf`, on retrouve les boucles chères ;
+- `defaut;ligne;nombre` : défauts de cache par ligne de 16 octets ; avec
+  `sh-elf-nm -n`, on voit quelles données (ou quel code) se chassent.
+
+Chaque ligne `sh2cycles;...` donne aussi, en dernier champ, les défauts
+de cache dus aux instructions.

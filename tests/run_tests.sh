@@ -39,7 +39,8 @@ scenario() {
     echo "ECHEC $name : $OUT/$name.ppm differe de $OUT/$name.ref.ppm"
     exit 1
   fi
-  grep "acces bus\|cycles" "$OUT/$name.log" | head -3 | sed 's/^/      /'
+  grep -E "acces bus|cycles|\] derniere image :" "$OUT/$name.log" | head -4 |
+    sed 's/^/      /'
 }
 
 echo "== simulateur complet"

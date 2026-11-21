@@ -204,3 +204,106 @@ système. run.sh cherche les outils au même endroit.
 Dockerfile et docker.sh : le banc dans un conteneur Ubuntu, depuis un
 Mac, où qemu en mode utilisateur n'existe pas.
 ```
+
+---
+
+compose.c réécrit pour le SH2, code de rendu en RAM interne
+
+**Ce que fait cette version** :
+- `supervdp/compose.c` réécrit pour le SH2, même principe (segments,
+  une décision de parité par ligne et par plan, écritures 16 bits
+  uniquement), chaque étape mesurée avec le banc :
+  - plus de division ni de décalage à distance variable (le SH2 n'en a
+    pas : appels à libgcc) : positions ramenées dans le plan par
+    soustraction, classe des lignes de tile lue avec des masques préparés
+    une fois par ligne, positions non signées ;
+  - tiles parcourues par un pointeur sur leur numéro, qui revient au
+    début de la rangée au bout du plan ;
+  - tiles entières copiées sans boucle (8 mots) ; en source impaire, lues
+    en quatre `MOV.L` ;
+  - destination : un pointeur sur SH2 (écritures `MOV.W R0,@(disp,Rn)`),
+    un offset sur l'hôte (chaque écriture passe toujours par
+    `vdp_dram_write16`, qui la compte) ;
+  - fusion par morceaux sans changement de tile, deux pixels à la fois ;
+    mot de frontière entre segments lu directement (`mergeWord`).
+- Cache en mode « 2 voies + RAM » (32X Hardware Manual, « Cache ») : 2 Ko
+  de cache à 2 voies, et le code de `compose.c` (1 852 octets) dans les
+  2 Ko de RAM interne du SH2, en C000 0000h. Le code de rendu ne subit
+  plus de défaut de cache (le profil montrait les lignes de tile lues en
+  continu chassant le code et la pile).
+- Banc `tools/sh2cycles` :
+  - greffon : options `ways=2` (cache 2 voies + RAM interne) et
+    `ram=adresse` ; défauts de cache dus aux instructions comptés à part ;
+    avec `profile=on`, défauts par ligne de 16 octets ;
+  - `bench_ram.ld` place le code de `compose.c` dans la RAM interne ;
+    `run.sh` mesure ce mode par défaut (`CACHE=4` : l'ancien) et donne la
+    place occupée en RAM interne (2 Ko au plus, vérifié à l'édition de
+    liens) ;
+  - `fit.py` : coûts unitaires positifs ou nuls (lignes et tiles
+    examinées varient presque ensemble).
+- `supervdp/cost.h` réétalonné (-4,5 % / +5,3 %) ; `assets_types.h` :
+  `tile_row()`, utilisée par la référence de `test_compose`.
+- `tests/run_tests.sh` affiche aussi le verdict 60 images/s de chaque
+  scénario.
+- Vérifié : `test_compose` (1 168 576 lignes) et les 5 scénarios du
+  simulateur ; sur SH2, pixels identiques à l'hôte et 17 920 écritures par
+  CPU et par image.
+
+**Mesures** (par CPU et par image, hors écritures FB ; pire image avec
+écritures à 3 cycles) :
+
+| Étape                                         | Moyenne | Pire    |
+|-----------------------------------------------|---------|---------|
+| Départ (version précédente, cache 4 voies)    | 717 077 | 950 826 |
+| C sans division ni décalage variable          | 481 087 | 682 590 |
+| Destination pointeur, fusion par morceaux     | 440 136 | 635 046 |
+| Cache 2 voies + code en RAM interne           | 378 183 | 522 105 |
+| Fusion deux pixels à la fois, mot de frontière| 358 369 | 487 021 |
+| Tile entière impaire en `MOV.L`               | 336 469 | 441 039 |
+
+- pire image écritures comprises : 494 799 cycles, soit 1,29 image de
+  1/60 s (2,6 avant) ;
+- sur la trajectoire de la démo, selon la parité de xA et xB :
+  pair-pair 278 000 en moyenne, 290 000 au pire (**60 images/s**, 0,8
+  image de 1/60 s avec les écritures) ; pair-impair 333 000 / 358 000 ;
+  impair-pair 365 000 / 380 000 ; impair-impair 418 000 / 436 000 ;
+- essayé et abandonné : ranger les tiles par ligne (la ligne 0 de toutes
+  les tiles, puis la ligne 1...) pour répartir les lectures sur le cache.
+  Plus lent dans les deux modes du cache (474 000 au lieu de 440 000 en
+  4 voies, 384 000 au lieu de 378 000 en 2 voies + RAM).
+
+**Ce qui reste pour plus tard** :
+- registre de décalage d'écran (SFT, 2000 4102h : un point vers la
+  gauche, prévu par la doc pour les défilements impairs en Packed
+  Pixel) : xA toujours traité comme pair. Il faut 161 mots par ligne et
+  la prise en charge de SFT dans le simulateur. Pire cas attendu :
+  environ 358 000 cycles (B impair) ;
+- il resterait environ 30 000 cycles à gagner pour tenir 60 images/s
+  quand B est impair : segments et fusion (44 % des instructions),
+  chemin impair (34 %), notamment les débuts et fins de segment ;
+- écritures 32 bits dans le frame buffer : moitié moins d'instructions
+  d'écriture, mais la doc ne cite que 8 et 16 bits ; à vérifier sur un
+  émulateur 32X avant d'y toucher ;
+- sur la console, le programme de démarrage SH2 (pas encore écrit) devra
+  mettre le cache en mode 2 voies (CCR) et recopier le code de
+  `compose.c` en C000 0000h.
+
+Message de commit proposé :
+
+```
+compose.c réécrit pour le SH2, code de rendu en RAM interne
+
+Même principe (segments, parité décidée par ligne et par plan,
+écritures 16 bits), mais écrit pour le SH2 et mesuré pas à pas avec
+tools/sh2cycles : plus de division ni de décalage variable, tiles
+parcourues par pointeur et copiées sans boucle, tile impaire lue en
+MOV.L, destination en pointeur sur SH2, fusion par morceaux.
+
+Cache en mode 2 voies + RAM : le code de compose.c (1 852 octets) dans
+la RAM interne du SH2. Banc : options ways=2 et ram=, bench_ram.ld,
+défauts de cache par ligne, ajustement à coûts positifs. cost.h
+réétalonné.
+
+Par CPU et par image : 336 000 cycles en moyenne au lieu de 717 000,
+441 000 au pire au lieu de 951 000. Défilements pairs : 60 images/s.
+```

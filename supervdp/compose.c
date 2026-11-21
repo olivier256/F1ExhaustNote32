@@ -34,18 +34,34 @@
    ---------------------
    Si le défilement de A est impair, les frontières de tile de A tombent à
    des colonnes d'écran impaires : le mot qui chevauche deux segments passe
-   par la fusion (un mot). C'est juste dans tous les cas ; on pourra plus
-   tard reconnaître opaque + opaque ou transparent + transparent.
+   par la fusion (un mot).
+
+   Écrit pour le SH2 (mesuré avec tools/sh2cycles)
+   -----------------------------------------------
+   Le SH2 n'a ni division, ni décalage à distance variable (seulement 1,
+   2, 8 ou 16 bits) : un « % » ou un « >> n » devient un appel à libgcc.
+   Le code les évite :
+   - positions ramenées dans le plan par soustraction (wrapIn) ;
+   - classe d'une ligne de tile lue avec des masques préparés une fois par
+     ligne (classMasks), sans décalage ;
+   - positions en non signé : x >> 4 devient deux SHLR2 ;
+   - tiles parcourues par un pointeur sur leur numéro dans le plan, qui
+     revient au début de la rangée au bout du plan ;
+   - tiles entières copiées par une suite de 8 mots, sans boucle.
    ========================================================================= */
 
-/* Ramène v dans [0, n) */
-static int wrap(int v, int n) {
-    v %= n;
-    return v < 0 ? v + n : v;
+/* Ramène v dans [0, n), par additions ou soustractions : les valeurs
+   courantes (un défilement, une ligne) sont à moins d'un tour du plan. */
+static unsigned wrapIn(int v, unsigned n) {
+    while (v < 0)
+        v += (int)n;
+    while ((unsigned)v >= n)
+        v -= (int)n;
+    return (unsigned)v;
 }
 
-/* x + d, ramené dans [0, n), pour 0 <= x < n et d >= 0 */
-static int advance(int x, int d, int n) {
+/* x + d, ramené dans [0, n), pour x < n */
+static unsigned advance(unsigned x, unsigned d, unsigned n) {
     x += d;
     while (x >= n)
         x -= n;
@@ -63,6 +79,33 @@ static inline uint16_t readPair(const uint8_t *p) {
 #endif
 }
 
+/* ---- Destination dans le frame buffer --------------------------------------
+   Sur SH2 : un pointeur. Les mots d'une tile s'écrivent alors en
+   MOV.W R0,@(disp,Rn), sans recalculer l'adresse à chaque mot.
+   Sur l'hôte : un offset, et chaque écriture passe par vdp_dram_write16(),
+   qui la compte. */
+#if defined(__sh__)
+typedef volatile uint16_t *Dest;
+#define DEST(offset) ((Dest)(VDP_DRAM_ADDRESS + (offset)))
+#define PUT(d, k, v) ((d)[k] = (v)) /* mot k après d */
+#define SKIP(d, words) ((d) += (words))
+#else
+typedef uint32_t Dest;
+#define DEST(offset) (offset)
+#define PUT(d, k, v) vdp_dram_write16((d) + 2 * (k), (v))
+#define SKIP(d, words) ((d) += 2 * (words))
+#endif
+
+/* Quatre pixels lus à une adresse multiple de 4 : un MOV.L sur SH2 */
+static inline uint32_t readQuad(const uint8_t *p) {
+#if defined(__sh__)
+    return *(const uint32_t *)p;
+#else
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] << 8) | p[3];
+#endif
+}
+
 /* Assemble deux pixels lus séparément (deux MOV.B) en un mot */
 static inline uint16_t makePair(uint8_t left, uint8_t right) {
     return (uint16_t)((left << 8) | right);
@@ -73,153 +116,284 @@ static inline uint16_t makePair(uint8_t left, uint8_t right) {
 
 typedef struct {
     const uint16_t *row;     /* numéros de tile de la rangée traversée */
+    const uint16_t *rowEnd;  /* juste après le dernier */
     const uint8_t *tileLine; /* ligne voulue dans la tile 0 */
-    int rowInTile;           /* numéro de cette ligne dans la tile */
-    int width;               /* largeur du plan en pixels */
+    unsigned rowInTile;      /* numéro de cette ligne dans la tile */
+    unsigned width;          /* largeur du plan en pixels */
 } PlaneRow;
 
 static void planeRowInit(PlaneRow *pr, const Tilemap *map, const Tileset *tiles,
                          int worldY) {
-    const int y = wrap(worldY, map->heightTiles << TILE_SHIFT);
+    const unsigned y = wrapIn(worldY, (unsigned)map->heightTiles << TILE_SHIFT);
     pr->row = map->cells + (y >> TILE_SHIFT) * map->widthTiles;
+    pr->rowEnd = pr->row + map->widthTiles;
     pr->rowInTile = y & (TILE_SIZE - 1);
-    pr->tileLine = tiles->pixels + pr->rowInTile * TILE_SIZE;
-    pr->width = map->widthTiles << TILE_SHIFT;
+    pr->tileLine = tile_row(tiles, 0, pr->rowInTile);
+    pr->width = (unsigned)map->widthTiles << TILE_SHIFT;
 }
 
-/* Premier pixel du morceau qui commence à la colonne x du plan, et
-   nombre de pixels jusqu'à la fin de la tile (au plus 'remaining') */
-static inline const uint8_t *chunkAt(const PlaneRow *pr, int x, int remaining,
-                                     int *count) {
-    const int xInTile = x & (TILE_SIZE - 1);
-    const int n = TILE_SIZE - xInTile;
-    *count = n < remaining ? n : remaining;
-    return pr->tileLine + pr->row[x >> TILE_SHIFT] * TILE_PIXELS + xInTile;
+/* Premier pixel de la tile dont 'cell' donne le numéro, sur la ligne */
+static inline const uint8_t *tileStart(const PlaneRow *pr,
+                                       const uint16_t *cell) {
+    return pr->tileLine + (unsigned)*cell * TILE_PIXELS;
+}
+
+/* Tile suivante dans la rangée (le plan boucle) */
+static inline const uint16_t *nextCell(const PlaneRow *pr,
+                                       const uint16_t *cell) {
+    return ++cell == pr->rowEnd ? pr->row : cell;
 }
 
 /* ---- Copie d'un segment depuis un plan ------------------------------------
    n pixels (pair) du plan, à partir de sa colonne x, vers l'offset 'offset'
    (pair) du frame buffer. */
 
-typedef void (*CopySpan)(uint32_t offset, const PlaneRow *pr, int x, int n,
+typedef void (*CopySpan)(Dest d, const PlaneRow *pr, unsigned x, unsigned n,
                          ComposeCost *cost);
+
+/* Une ligne de tile entière, source paire : 8 mots, sans boucle */
+static inline void copyTileEven(Dest d, const uint8_t *src) {
+    PUT(d, 0, readPair(src));
+    PUT(d, 1, readPair(src + 2));
+    PUT(d, 2, readPair(src + 4));
+    PUT(d, 3, readPair(src + 6));
+    PUT(d, 4, readPair(src + 8));
+    PUT(d, 5, readPair(src + 10));
+    PUT(d, 6, readPair(src + 12));
+    PUT(d, 7, readPair(src + 14));
+}
 
 /* Source paire : chaque morceau commence à une adresse paire et a une
    longueur paire, dans la tile comme dans le frame buffer. */
-static void copySpanEven(uint32_t offset, const PlaneRow *pr, int x, int n,
+static void copySpanEven(Dest d, const PlaneRow *pr, unsigned x, unsigned n,
                          ComposeCost *cost) {
+    const uint16_t *cell = pr->row + (x >> TILE_SHIFT);
+    unsigned xInTile = x & (TILE_SIZE - 1);
+
     COST_ADD(cost, wordsEven, n / 2);
     while (n > 0) {
-        int count;
-        const uint8_t *src = chunkAt(pr, x, n, &count);
+        const uint8_t *src = tileStart(pr, cell) + xInTile;
+        cell = nextCell(pr, cell);
         COST_ADD(cost, tileChunks, 1);
 
-        for (int i = 0; i < count; i += 2) {
-            vdp_dram_write16(offset, readPair(src + i));
-            offset += 2;
+        if (xInTile == 0 && n >= TILE_SIZE) {
+            copyTileEven(d, src);
+            SKIP(d, TILE_SIZE / 2);
+            n -= TILE_SIZE;
+            continue;
         }
 
+        unsigned count = TILE_SIZE - xInTile;
+        if (count > n)
+            count = n;
         n -= count;
-        x = advance(x, count, pr->width);
+        xInTile = 0;
+        for (; count > 0; count -= 2) {
+            PUT(d, 0, readPair(src));
+            SKIP(d, 1);
+            src += 2;
+        }
     }
+}
+
+/* Une ligne de tile entière, source impaire : le pixel gardé de la tile
+   précédente avec le pixel 0, puis (1, 2) ... (13, 14). Renvoie le
+   pixel 15, qui ira avec le premier de la tile suivante. */
+static inline uint8_t copyTileOdd(Dest d, const uint8_t *src, uint8_t carry) {
+    /* Les 16 pixels en quatre mots longs (MOV.L, gros-boutiste) : le mot
+       écrit garde les 16 bits de poids faible, sans masque. */
+    const uint32_t l0 = readQuad(src), l1 = readQuad(src + 4),
+                   l2 = readQuad(src + 8), l3 = readQuad(src + 12);
+    PUT(d, 0, (uint16_t)((carry << 8) | (l0 >> 24)));
+    PUT(d, 1, (uint16_t)(l0 >> 8));
+    PUT(d, 2, (uint16_t)((l0 << 8) | (l1 >> 24)));
+    PUT(d, 3, (uint16_t)(l1 >> 8));
+    PUT(d, 4, (uint16_t)((l1 << 8) | (l2 >> 24)));
+    PUT(d, 5, (uint16_t)(l2 >> 8));
+    PUT(d, 6, (uint16_t)((l2 << 8) | (l3 >> 24)));
+    PUT(d, 7, (uint16_t)(l3 >> 8));
+    return (uint8_t)l3;
 }
 
 /* Source impaire : chaque mot écrit réunit un pixel de colonne impaire et
    le suivant. Le dernier pixel d'une tile (colonne 15) va donc avec le
    premier de la tile suivante : il est gardé de côté ('carry'). */
-static void copySpanOdd(uint32_t offset, const PlaneRow *pr, int x, int n,
+static void copySpanOdd(Dest d, const PlaneRow *pr, unsigned x, unsigned n,
                         ComposeCost *cost) {
+    const uint16_t *cell = pr->row + (x >> TILE_SHIFT);
+    unsigned xInTile = x & (TILE_SIZE - 1);
     uint8_t carry = 0;
     int hasCarry = 0;
 
     COST_ADD(cost, wordsOdd, n / 2);
     while (n > 0) {
-        int count;
-        const uint8_t *src = chunkAt(pr, x, n, &count);
-        int i = 0;
+        const uint8_t *src = tileStart(pr, cell) + xInTile;
+        cell = nextCell(pr, cell);
         COST_ADD(cost, tileChunks, 1);
 
+        if (hasCarry && xInTile == 0 && n >= TILE_SIZE) {
+            carry = copyTileOdd(d, src, carry);
+            SKIP(d, TILE_SIZE / 2);
+            n -= TILE_SIZE;
+            continue;
+        }
+
+        unsigned count = TILE_SIZE - xInTile;
+        if (count > n)
+            count = n;
+        n -= count;
+        xInTile = 0;
+
+        unsigned i = 0;
         if (hasCarry) {
-            vdp_dram_write16(offset, makePair(carry, src[0]));
-            offset += 2;
+            PUT(d, 0, makePair(carry, src[0]));
+            SKIP(d, 1);
             i = 1;
             hasCarry = 0;
         }
-
         for (; i + 1 < count; i += 2) {
-            vdp_dram_write16(offset, makePair(src[i], src[i + 1]));
-            offset += 2;
+            PUT(d, 0, makePair(src[i], src[i + 1]));
+            SKIP(d, 1);
         }
-
         if (i < count) {
             carry = src[i];
             hasCarry = 1;
         }
-
-        n -= count;
-        x = advance(x, count, pr->width);
     }
     /* n étant pair, il ne reste jamais de pixel en attente ici */
 }
 
 /* ---- Fusion pixel par pixel ------------------------------------------------
-   Lecture séquentielle d'un plan, un pixel à la fois. */
+   n pixels (pair) : A s'il est non nul, sinon B. Ce chemin ne sert
+   qu'aux lignes de tile mixtes et aux frontières de segment, rares.
+   On avance par morceaux où ni A ni B ne change de tile : à l'intérieur,
+   deux pointeurs, sans test de fin de tile à chaque pixel. Les pixels
+   sont réunis deux par deux en mots ; un morceau peut finir sur un pixel
+   de gauche, qui attend alors le pixel suivant ('pending'). */
 
 typedef struct {
-    const PlaneRow *pr;
-    const uint8_t *src; /* prochain pixel */
-    int left;           /* pixels restants dans le morceau de tile */
-    int x;              /* colonne du plan du prochain morceau */
+    const uint16_t *cell; /* tile suivante */
+    const uint8_t *src;   /* prochain pixel */
+    unsigned left;        /* pixels restants dans la tile en cours */
 } Cursor;
 
-static inline void cursorInit(Cursor *c, const PlaneRow *pr, int x) {
-    c->pr = pr;
-    c->src = 0;
-    c->left = 0;
-    c->x = x;
+static inline void cursorAt(Cursor *c, const PlaneRow *pr, unsigned x) {
+    const uint16_t *cell = pr->row + (x >> TILE_SHIFT);
+    const unsigned xInTile = x & (TILE_SIZE - 1);
+    c->src = tileStart(pr, cell) + xInTile;
+    c->left = TILE_SIZE - xInTile;
+    c->cell = nextCell(pr, cell);
 }
 
-static inline uint8_t cursorNext(Cursor *c, ComposeCost *cost) {
-    if (c->left == 0) {
-        c->src = chunkAt(c->pr, c->x, TILE_SIZE, &c->left);
-        c->x = advance(c->x, c->left, c->pr->width);
-        COST_ADD(cost, tileChunks, 1);
-    }
-    c->left--;
-    return *c->src++;
+static inline void cursorNextTile(Cursor *c, const PlaneRow *pr) {
+    c->src = tileStart(pr, c->cell);
+    c->cell = nextCell(pr, c->cell);
+    c->left = TILE_SIZE;
 }
 
-/* n pixels (pair) : A s'il est non nul, sinon B. Les deux plans sont lus
-   à chaque pixel : ce chemin ne sert qu'aux lignes de tile mixtes et aux
-   frontières de segment, rares. */
-static void mergeSpan(uint32_t offset, const PlaneRow *pa, int xa,
-                      const PlaneRow *pb, int xb, int n, ComposeCost *cost) {
+static void mergeSpan(Dest d, const PlaneRow *pa, unsigned xa,
+                      const PlaneRow *pb, unsigned xb, unsigned n,
+                      ComposeCost *cost) {
     Cursor a, b;
-    cursorInit(&a, pa, xa);
-    cursorInit(&b, pb, xb);
-
+    cursorAt(&a, pa, xa);
+    cursorAt(&b, pb, xb);
+    COST_ADD(cost, tileChunks, 2);
     COST_ADD(cost, wordsMerged, n / 2);
-    for (int i = 0; i < n; i += 2) {
-        uint8_t left = cursorNext(&a, cost);
-        uint8_t backLeft = cursorNext(&b, cost);
-        uint8_t right = cursorNext(&a, cost);
-        uint8_t backRight = cursorNext(&b, cost);
-        if (left == 0)
-            left = backLeft;
-        if (right == 0)
-            right = backRight;
-        vdp_dram_write16(offset, makePair(left, right));
-        offset += 2;
+
+    unsigned pending = 0, hasPending = 0;
+    for (;;) {
+        unsigned piece = a.left < b.left ? a.left : b.left;
+        if (piece > n)
+            piece = n;
+        n -= piece;
+        a.left -= piece;
+        b.left -= piece;
+
+        const uint8_t *srcA = a.src, *srcB = b.src;
+        a.src += piece;
+        b.src += piece;
+
+        /* Sans pixel en attente : deux pixels à la fois, un mot écrit */
+        if (!hasPending) {
+            for (; piece >= 2; piece -= 2) {
+                unsigned left = srcA[0], right = srcA[1];
+                if (left == 0)
+                    left = srcB[0];
+                if (right == 0)
+                    right = srcB[1];
+                PUT(d, 0, (uint16_t)((left << 8) | right));
+                SKIP(d, 1);
+                srcA += 2;
+                srcB += 2;
+            }
+        }
+        for (; piece > 0; piece--) {
+            unsigned pixel = *srcA++;
+            const unsigned back = *srcB++;
+            if (pixel == 0)
+                pixel = back;
+            if (hasPending) {
+                PUT(d, 0, (uint16_t)((pending << 8) | pixel));
+                SKIP(d, 1);
+                hasPending = 0;
+            } else {
+                pending = pixel;
+                hasPending = 1;
+            }
+        }
+
+        if (n == 0)
+            break;
+        if (a.left == 0) {
+            cursorNextTile(&a, pa);
+            COST_ADD(cost, tileChunks, 1);
+        }
+        if (b.left == 0) {
+            cursorNextTile(&b, pb);
+            COST_ADD(cost, tileChunks, 1);
+        }
     }
+    /* n étant pair, il ne reste jamais de pixel en attente ici */
+}
+
+/* Un pixel d'un plan, à sa colonne x (x < largeur) */
+static inline unsigned pixelAt(const PlaneRow *pr, unsigned x) {
+    return tileStart(pr, pr->row + (x >> TILE_SHIFT))[x & (TILE_SIZE - 1)];
+}
+
+/* Le mot de frontière entre deux segments (colonnes xa et xa + 1 de A,
+   xb et xb + 1 de B) : quatre pixels lus directement, sans curseurs. */
+static void mergeWord(Dest d, const PlaneRow *pa, unsigned xa,
+                      const PlaneRow *pb, unsigned xb, ComposeCost *cost) {
+    const unsigned xa1 = xa + 1 == pa->width ? 0 : xa + 1;
+    const unsigned xb1 = xb + 1 == pb->width ? 0 : xb + 1;
+    unsigned left = pixelAt(pa, xa), right = pixelAt(pa, xa1);
+    if (left == 0)
+        left = pixelAt(pb, xb);
+    if (right == 0)
+        right = pixelAt(pb, xb1);
+    PUT(d, 0, (uint16_t)((left << 8) | right));
+    COST_ADD(cost, wordsMerged, 1);
 }
 
 /* ---- La ligne -------------------------------------------------------------
  */
 
-/* Segment de la ligne d'écran : colonnes [start, end), une classe */
+/* Masque des 2 bits de classe de chaque ligne de tile (assets_types.h) :
+   la classe se lit par un ET, sans décalage à distance variable. */
+static const uint32_t classMasks[TILE_SIZE] = {
+    0x00000003, 0x0000000C, 0x00000030, 0x000000C0, 0x00000300, 0x00000C00,
+    0x00003000, 0x0000C000, 0x00030000, 0x000C0000, 0x00300000, 0x00C00000,
+    0x03000000, 0x0C000000, 0x30000000, 0xC0000000,
+};
+/* Bits de la classe opaque (01) dans toutes les lignes */
+#define ALL_ROWS_OPAQUE 0x55555555u
+
+/* Segment de la ligne d'écran : colonnes [start, end), une classe (déjà
+   masquée : comparée aux valeurs de la ligne, sans décalage) */
 typedef struct {
     int16_t start, end;
-    int16_t rowClass;
+    uint32_t rowClass;
 } Run;
 
 /* Une tile de A par segment au pire, plus les deux tiles entamées */
@@ -232,66 +406,71 @@ void compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
     planeRowInit(&pa, planeA, tiles, worldAY);
     planeRowInit(&pb, planeB, tiles, worldBY);
 
-    const int xa0 = wrap(scrollAX, pa.width);
-    const int xb0 = wrap(scrollBX, pb.width);
+    const unsigned xa0 = wrapIn(scrollAX, pa.width);
+    const unsigned xb0 = wrapIn(scrollBX, pb.width);
 
     /* Une décision de parité par plan, pour toute la ligne */
     const CopySpan copyA = (xa0 & 1) ? copySpanOdd : copySpanEven;
     const CopySpan copyB = (xb0 & 1) ? copySpanOdd : copySpanEven;
 
+    /* Classes de cette ligne de tile, masquées */
+    const uint32_t classMask = classMasks[pa.rowInTile];
+    const uint32_t opaque = classMask & ALL_ROWS_OPAQUE;
+    const uint32_t *const rowClasses = tiles->rowClasses;
+
     COST_ADD(cost, lines, 1);
 
     /* 1. Segments : la ligne de A, tile par tile, les tiles voisines de
-          même classe regroupées. */
+          même classe regroupées. La classe du segment en cours reste dans
+          une variable locale (un registre) ; le segment n'est rangé dans
+          le tableau qu'une fois terminé. */
     Run runs[MAX_RUNS];
-    int runCount = 0;
-    for (int sx = 0, x = xa0; sx < FB_WIDTH;) {
-        int n = TILE_SIZE - (x & (TILE_SIZE - 1));
-        if (n > FB_WIDTH - sx)
-            n = FB_WIDTH - sx;
-        const int rowClass =
-            tile_row_class(tiles, pa.row[x >> TILE_SHIFT], pa.rowInTile);
+    Run *run = runs;
+    const uint16_t *cell = pa.row + (xa0 >> TILE_SHIFT);
+    unsigned sx = TILE_SIZE - (xa0 & (TILE_SIZE - 1)); /* tile entamée */
+    unsigned start = 0;
+    uint32_t current = rowClasses[*cell] & classMask;
+    cell = nextCell(&pa, cell);
+    COST_ADD(cost, aTiles, 1);
+
+    for (; sx < FB_WIDTH; sx += TILE_SIZE) {
+        const uint32_t rowClass = rowClasses[*cell] & classMask;
+        cell = nextCell(&pa, cell);
         COST_ADD(cost, aTiles, 1);
-
-        if (runCount > 0 && runs[runCount - 1].rowClass == rowClass) {
-            runs[runCount - 1].end = (int16_t)(sx + n);
-        } else {
-            runs[runCount].start = (int16_t)sx;
-            runs[runCount].end = (int16_t)(sx + n);
-            runs[runCount].rowClass = (int16_t)rowClass;
-            runCount++;
+        if (rowClass != current) {
+            run->start = (int16_t)start;
+            run->end = (int16_t)sx;
+            run->rowClass = current;
+            run++;
+            start = sx;
+            current = rowClass;
         }
-
-        sx += n;
-        x = advance(x, n, pa.width);
     }
+    run->start = (int16_t)start;
+    run->end = FB_WIDTH; /* la dernière tile est coupée au bord de l'écran */
+    run->rowClass = current;
+    const Run *const lastRun = run;
 
     /* 2. Dessin, mot par mot. 'p' est la prochaine colonne d'écran à
           écrire, toujours paire. Un segment qui commence à une colonne
           impaire a déjà eu son premier pixel écrit avec le mot de
           frontière précédent. */
-    int p = 0;
-    for (int r = 0; r < runCount; r++) {
-        const Run *run = &runs[r];
-        const int end = run->end & ~1; /* fin des mots entiers du segment */
+    unsigned p = 0;
+    for (run = runs; run <= lastRun; run++) {
+        const unsigned end = (unsigned)run->end & ~1u; /* mots entiers */
 
         if (end > p) {
-            const int n = end - p;
-            const int xa = advance(xa0, p, pa.width);
-            const int xb = advance(xb0, p, pb.width);
+            const unsigned count = end - p;
+            const unsigned xa = advance(xa0, p, pa.width);
+            const unsigned xb = advance(xb0, p, pb.width);
             COST_ADD(cost, runs, 1);
 
-            switch (run->rowClass) {
-            case ROW_OPAQUE:
-                copyA(offset + (uint32_t)p, &pa, xa, n, cost);
-                break;
-            case ROW_TRANSPARENT:
-                copyB(offset + (uint32_t)p, &pb, xb, n, cost);
-                break;
-            default:
-                mergeSpan(offset + (uint32_t)p, &pa, xa, &pb, xb, n, cost);
-                break;
-            }
+            if (run->rowClass == opaque)
+                copyA(DEST(offset + p), &pa, xa, count, cost);
+            else if (run->rowClass == 0)
+                copyB(DEST(offset + p), &pb, xb, count, cost);
+            else
+                mergeSpan(DEST(offset + p), &pa, xa, &pb, xb, count, cost);
             p = end;
         }
 
@@ -299,8 +478,8 @@ void compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
            cheval sur ce segment et le suivant. */
         if (run->end & 1) {
             COST_ADD(cost, runs, 1);
-            mergeSpan(offset + (uint32_t)p, &pa, advance(xa0, p, pa.width), &pb,
-                      advance(xb0, p, pb.width), 2, cost);
+            mergeWord(DEST(offset + p), &pa, advance(xa0, p, pa.width), &pb,
+                      advance(xb0, p, pb.width), cost);
             p += 2;
         }
     }

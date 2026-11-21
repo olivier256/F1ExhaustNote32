@@ -83,8 +83,7 @@ static uint8_t planePixel(const Tilemap *map, int x, int y) {
     y = wrap(y, map->heightTiles * TILE_SIZE);
     const unsigned tile =
         map->cells[(y / TILE_SIZE) * map->widthTiles + x / TILE_SIZE];
-    return tiles->pixels[tile * TILE_PIXELS + (y % TILE_SIZE) * TILE_SIZE +
-                         x % TILE_SIZE];
+    return tile_row(tiles, tile, (unsigned)(y % TILE_SIZE))[x % TILE_SIZE];
 }
 
 static uint8_t referencePixel(int sx, int xA, int yA, int xB, int yB) {

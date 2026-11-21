@@ -17,15 +17,18 @@
    Les coûts unitaires sont ÉTALONNÉS par le banc tools/sh2cycles : le
    vrai code de compose.c, compilé pour SH2 (gcc 13.2 -m2 -O2), exécuté
    sous qemu avec un modèle de temps du SH2 (cycles par instruction,
-   branchements, dépendances, cache de 4 Ko, SDRAM). Ajustement par
-   moindres carrés sur 360 images : le modèle ci-dessous reproduit les
-   temps du banc à -3 % / +6 % près. Les refaire après toute modification
+   branchements, dépendances, cache, SDRAM). Le cache est supposé en mode
+   « 2 voies + RAM », le code de compose.c dans la RAM interne (voir
+   tools/sh2cycles/bench_ram.ld). Ajustement par moindres carrés, à coûts
+   positifs ou nuls, sur 360 images : le modèle ci-dessous reproduit les
+   temps du banc à -5 % / +6 % près. Les refaire après toute modification
    de compose.c : tools/sh2cycles/run.sh imprime les nouvelles valeurs.
 
-   Chaque ligne écrit exactement 160 mots : le coût d'un mot copié depuis
-   une source paire ne se distingue pas du coût fixe d'une ligne. Il est
-   compté dans CYCLES_LINE ; les coûts par mot sont des surcoûts par
-   rapport à lui.
+   Chaque ligne écrit exactement 160 mots, et examine presque toujours 20
+   ou 21 tiles de A : le coût fixe d'une ligne (dont les mots copiés
+   depuis une source paire) ne se distingue pas de celui des tiles
+   examinées. Il est compté dans CYCLES_A_TILE ; les coûts par mot sont
+   des surcoûts par rapport à un mot copié depuis une source paire.
 
    Sur SH2, les compteurs disparaissent (sauf compilation avec
    SUPERVDP_COST) : le moteur n'est pas ralenti par sa propre mesure.
@@ -52,15 +55,15 @@ typedef struct {
 } ComposeCost;
 
 /* Coûts unitaires, en cycles SH2, hors écritures dans le frame buffer.
-   Étalonnés par tools/sh2cycles (2026-11-21, compose.c de la version
-   « deux plans superposés »). */
-#define CYCLES_LINE 1930      /* fixe par ligne, dont 160 mots source paire */
-#define CYCLES_A_TILE 41      /* tile de A examinée (classe, regroupement) */
-#define CYCLES_RUN 33         /* segment : choix du chemin, positions */
-#define CYCLES_TILE_CHUNK 69  /* morceau de tile : adresse, cache, boucle */
-#define CYCLES_WORD_EVEN 0    /* compté dans CYCLES_LINE */
-#define CYCLES_WORD_ODD 16    /* surcoût d'un mot source impaire */
-#define CYCLES_WORD_MERGED 92 /* surcoût d'un mot fusionné */
+   Étalonnés par tools/sh2cycles (compose.c réécrit pour le SH2, cache
+   en 2 voies + RAM). */
+#define CYCLES_LINE 0        /* compté dans CYCLES_A_TILE */
+#define CYCLES_A_TILE 18     /* tile de A examinée, et part fixe de la ligne */
+#define CYCLES_RUN 45        /* segment : choix du chemin, positions */
+#define CYCLES_TILE_CHUNK 70 /* morceau de tile : adresse, cache, boucle */
+#define CYCLES_WORD_EVEN 0   /* compté dans les coûts ci-dessus */
+#define CYCLES_WORD_ODD 7    /* surcoût d'un mot source impaire */
+#define CYCLES_WORD_MERGED 52 /* surcoût d'un mot fusionné */
 
 static inline uint32_t cost_cycles(const ComposeCost *c) {
     return c->lines * CYCLES_LINE + c->aTiles * CYCLES_A_TILE +
