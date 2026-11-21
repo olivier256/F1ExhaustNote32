@@ -128,11 +128,6 @@ static inline uint32_t readQuad(const uint8_t *p) {
 #endif
 }
 
-/* Assemble deux pixels lus séparément (deux MOV.B) en un mot */
-static inline uint16_t makePair(uint8_t left, uint8_t right) {
-    return (uint16_t)((left << 8) | right);
-}
-
 /* ---- Une ligne d'un plan --------------------------------------------------
  */
 

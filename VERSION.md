@@ -514,3 +514,23 @@ cost.h réétalonné.
 Par CPU et par image, hors écritures FB : 277 000 cycles en moyenne,
 316 000 au pire (310 000 et 356 000 avant).
 ```
+
+---
+
+Retrait de makePair, inutilisée depuis la lecture par mots alignés
+
+**Ce que fait cette version** :
+- `compose.c` : la fonction `makePair` (deux pixels lus par MOV.B
+  assemblés en un mot) ne servait plus depuis que `copySpanOdd` lit le
+  plan par mots alignés ; clang le signalait (`-Wunused-function`), gcc
+  non. Retirée. Code produit inchangé.
+- Vérifié : compilation sans avertissement avec clang et gcc
+  (`-Wall -Wextra`) ; `test_compose` et les 5 scénarios sans erreur.
+
+Message de commit proposé :
+
+```
+Retrait de makePair, inutilisée depuis la lecture par mots alignés
+
+clang la signalait (-Wunused-function). Code produit inchangé.
+```
