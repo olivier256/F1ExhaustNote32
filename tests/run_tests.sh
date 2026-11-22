@@ -72,7 +72,7 @@ run() {
         "$OUT/$name-$shot.ref.ppm"
       exit 1
     fi
-    grep -E "\[image $shot\] (acces bus|cycles CPU|derniere image|H_INT)" \
+    grep -E "\[image $shot\] (acces bus|cycles CPU|derniere image|H_INT|DMA Mega Drive)" \
       "$OUT/$name.log" | sed 's/^/      /'
   done
 }

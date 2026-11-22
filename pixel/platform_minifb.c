@@ -1,5 +1,6 @@
 #include "game.h"
 #include "interface.h"
+#include "mdvdp.h"
 #include "platform.h"
 #include "vdp.h"
 
@@ -113,8 +114,11 @@ static int64_t nowNs(void) {
    l'ait acquittée, en cédant le processeur, au plus HINT_WAIT_NS. Au-delà,
    la H_INT reste en attente et sera comptée en retard au HBlank suivant :
    c'est alors une vraie faute du jeu (interruptions masquées, routine trop
-   longue). */
-#define HINT_WAIT_NS 50000 /* 50 µs, moins d'une ligne (63,5 µs) */
+   longue).
+   Jusqu'à 2 ms, comme sans fenêtre : une H_INT servie trop tard décale
+   les couleurs de la route ou SFT de toutes les lignes suivantes de
+   l'image (clignotement). La synchro vidéo rattrape ensuite son retard. */
+#define HINT_WAIT_NS 2000000 /* 2 ms */
 
 static void waitHintServed(void) {
     const int64_t limit = nowNs() + HINT_WAIT_NS;
@@ -471,10 +475,15 @@ static void beginLine(int line, int64_t startNs) {
         vdp_end_vblank();
     }
 
+    md_vdp_begin_line(line, line >= _displayLines);
     if (line < _displayLines) {
         /* Le VDP lit la ligne au moment où le faisceau la balaie : un
-           changement de palette en cours d'image apparaîtra donc ici. */
-        vdp_render_line(line, _renderBuf + (size_t)line * VDP_SCREEN_WIDTH);
+           changement de palette en cours d'image apparaîtra donc ici. Puis
+           l'image Mega Drive (sprites) par-dessus, ou derrière. */
+        uint32_t *rgb = _renderBuf + (size_t)line * VDP_SCREEN_WIDTH;
+        uint8_t through[VDP_SCREEN_WIDTH];
+        vdp_render_line(line, rgb, through);
+        md_vdp_compose_line(line, rgb, through, vdp_mega_drive_in_front());
         /* Puis le HBlank de cette ligne : H_INT. Sa routine a jusqu'au
            début de la ligne suivante (sur la console, seulement le HBlank,
            plus court) pour écrire ce qui doit valoir pour elle. */
@@ -482,6 +491,8 @@ static void beginLine(int line, int64_t startNs) {
         waitHintServed();
     } else {
         interface_hblank(1);
+        if (line > _displayLines)
+            md_vblank_line(line - _displayLines);
     }
     if (line == _displayLines) {
         /* Début du VBlank : l'image affichée est complète */

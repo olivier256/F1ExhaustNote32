@@ -5,10 +5,11 @@
 
    Usage : costs PREMIERE_LIGNE      (0 = Master, 1 = Slave)
    Sortie (stdout), une ligne par image :
-     image;segments;roadLines;skyLines;modele;empreinte
+     image;segments;roadLines;skyLines;hud;modele;empreinte;ecritures_FB
    ========================================================================= */
 
 #include "framebuffer.h"
+#include "hud.h"
 #include "project.h"
 #include "race.h"
 #include "render.h"
@@ -48,6 +49,10 @@ int main(int argc, char *argv[]) {
         project_lines(c->track, &v, lines, BENCH_SCREEN_HEIGHT, first, 2, &p);
         for (int y = first; y < BENCH_SCREEN_HEIGHT; y += 2)
             attributes[y] = render_line(y, &lines[y], &layout, &r);
+        const int hud = first == 0;
+        uint32_t fbWrites = BENCH_SCREEN_HEIGHT / 2;
+        if (hud)
+            fbWrites += 2 + hud_build(v.position) / 2;
 
         /* Empreinte de ce que le VDP afficherait (voir bench.c) */
         uint32_t h = 2166136261u;
@@ -59,8 +64,9 @@ int main(int argc, char *argv[]) {
             h = (h ^ (attributes[y] & LINE_DARK)) * 16777619u;
         }
 
-        printf("%d;%u;%u;%u;%u;%08x\n", i, p.segments, r.roadLines, r.skyLines,
-               cost_cycles(&p, &r), h);
+        printf("%d;%u;%u;%u;%d;%u;%08x;%u\n", i, p.segments, r.roadLines,
+               r.skyLines, hud, cost_cycles(&p, &r) + (hud ? CYCLES_HUD : 0), h,
+               fbWrites);
     }
     return 0;
 }

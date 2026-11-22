@@ -1,5 +1,6 @@
 #include "game.h"
 #include "interface.h"
+#include "mdvdp.h"
 #include "platform.h"
 #include "vdp.h"
 
@@ -207,13 +208,20 @@ static void runVideo(void) {
 
             if (line == 0)
                 vdp_end_vblank();
+            md_vdp_begin_line(line, line >= SCREEN_HEIGHT);
 
             if (line < SCREEN_HEIGHT) {
-                vdp_render_line(line, _rgb + (size_t)line * VDP_SCREEN_WIDTH);
+                uint32_t *rgb = _rgb + (size_t)line * VDP_SCREEN_WIDTH;
+                uint8_t through[VDP_SCREEN_WIDTH];
+                vdp_render_line(line, rgb, through);
+                md_vdp_compose_line(line, rgb, through,
+                                    vdp_mega_drive_in_front());
                 interface_hblank(0); /* H_INT : voir platform_minifb.c */
                 waitHintServed();
             } else {
                 interface_hblank(1);
+                if (line > SCREEN_HEIGHT)
+                    md_vblank_line(line - SCREEN_HEIGHT);
             }
             if (line == SCREEN_HEIGHT) {
                 /* L'image 'frame' est complète : capture éventuelle */

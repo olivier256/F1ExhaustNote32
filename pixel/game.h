@@ -25,8 +25,15 @@ void slave_hint(void);
 /* Routine V_INT du 68000 (le programme Mega Drive de la cartouche).
    Le 68000 n'est pas émulé : la plate-forme appelle cette fonction au
    début de chaque VBlank, depuis la synchro vidéo. Elle doit être très
-   courte (lire la manette, écrire les registres COMM) et ne toucher ni
-   au frame buffer ni à la palette 32X, réservés aux SH2. */
+   courte (lire la manette, écrire les registres COMM). Elle ne touche au
+   frame buffer 32X qu'après avoir pris le VDP 32X (bit FM, interface.h),
+   et le rend avant la fin du VBlank. */
 void md_vint(void);
+
+/* Suite du programme 68000 pendant le VBlank : appelée au début de
+   chaque ligne du VBlank après la première (vblankLine = 1, 2...). Le
+   68000 y attend par exemple la fin d'un DMA (mdvdp.h) avant de rendre
+   le VDP 32X aux SH2. Mêmes règles que md_vint. */
+void md_vblank_line(int vblankLine);
 
 #endif

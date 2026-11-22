@@ -1,6 +1,7 @@
 /* Édition de liens du banc sh2cycles, cache en mode « 2 voies + RAM » :
-   comme bench.ld, mais le code de chaque image (race/project.c, et le
-   choix des lignes dans race/render.c) est placé dans la RAM interne du
+   comme bench.ld, mais le code de chaque image (race/project.c,
+   race/hud.c, et le choix des lignes dans race/render.c) est placé dans
+   la RAM interne du
    SH2, en C000 0000h (2 Ko au plus). Le code froid de render.c (la
    préparation des lignes, au démarrage ; section .text.sdram) reste en
    SDRAM.
@@ -29,8 +30,8 @@ SECTIONS
     /* Tout le code en SDRAM, sauf celui du moteur, qui va en RAM
        interne ; son code froid (section .text.sdram) reste en SDRAM. */
     .text : {
-        *(EXCLUDE_FILE(*project.o *render.o *_sh2.o) .text .text.*)
-        *project.o(.text.sdram) *render.o(.text.sdram)
+        *(EXCLUDE_FILE(*project.o *render.o *hud.o *_sh2.o) .text .text.*)
+        *project.o(.text.sdram) *render.o(.text.sdram) *hud.o(.text.sdram)
     } :sdram
     .rodata : { *(.rodata .rodata.*) } :sdram
     .data : { *(.data .data.*) } :sdram
@@ -46,6 +47,8 @@ SECTIONS
     .fb : { *(.fb) } :fb
 
     . = RAM_BASE;
-    .ram : { *project.o(.text) *render.o(.text) *_sh2.o(.text) } :ram
+    .ram : {
+        *project.o(.text) *render.o(.text) *hud.o(.text) *_sh2.o(.text)
+    } :ram
     ASSERT(SIZEOF(.ram) <= 0x800, "le code en RAM interne depasse 2 Ko")
 }

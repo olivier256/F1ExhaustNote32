@@ -49,24 +49,30 @@ typedef struct {
 /* Coûts unitaires, en cycles SH2, hors écritures dans le frame buffer.
    Étalonnés par tools/sh2cycles (moindres carrés sur 360 images, à -2 % /
    +2 % près), code compilé en C, cache en 2 voies + RAM, code de chaque
-   image (project.c, render_line) en RAM interne.
+   image (project.c, render_line, hud.c) en RAM interne (1 972 octets sur
+   2 048).
 
    Chaque CPU traite toujours 112 lignes, route ou ciel, et projette 160
    points : l'ajustement ne peut pas séparer ces coûts fixes.
    CYCLES_FRAME réunit la projection des points et le coût d'une ligne de
    ciel pour les 112 lignes ; CYCLES_ROAD_LINE est le surcoût d'une ligne
    de route (description, choix de la largeur, du décalage). */
-#define CYCLES_FRAME 50824  /* par image et par CPU */
-#define CYCLES_SEGMENT 398  /* segment dessiné : division, pentes */
-#define CYCLES_ROAD_LINE 21 /* surcoût d'une ligne de route */
+#define CYCLES_FRAME 54472  /* par image et par CPU */
+#define CYCLES_SEGMENT 363  /* segment dessiné : division, pentes */
+#define CYCLES_ROAD_LINE 18 /* surcoût d'une ligne de route */
 
 /* Interruptions du Master, par image : une H_INT par ligne affichée (elle
    écrit le décalage d'écran de la ligne suivante, et quatre couleurs
    quand la bande change) et une V_INT. Entrée dans l'exception, routine,
-   RTE : ESTIMATION, non mesurée par le banc (qui ne simule pas les
-   interruptions). */
-#define CYCLES_INTERRUPT 40
-#define CYCLES_PALETTE_SWAP 20 /* les quatre couleurs, en plus */
+   RTE : ESTIMATION, d'après les attentes du 32X Hardware Manual (registres
+   du VDP et palette : 5 attentes), non mesurée par le banc (qui ne simule
+   pas les interruptions). */
+#define CYCLES_INTERRUPT 100   /* SFT compris (environ 7 cycles) */
+#define CYCLES_PALETTE_SWAP 30 /* les quatre couleurs, en plus (7 chacune) */
+
+/* Le compteur en sprites Mega Drive (hud.c), Master, par image : étalonné
+   par le banc (170 écritures dans le frame buffer, comptées à part) */
+#define CYCLES_HUD 1941
 
 static inline uint32_t cost_cycles(const ProjectCost *p, const RenderCost *r) {
     return CYCLES_FRAME + p->segments * CYCLES_SEGMENT +

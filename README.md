@@ -13,6 +13,11 @@ table de lignes (une adresse par ligne d'écran : quelle largeur de
 route, décalée de combien), et le Master change au HBlank le décalage
 d'un pixel (SFT) et les couleurs des bandes claires et sombres.
 
+Les CPU ainsi libérés préparent aussi des sprites pour la Mega Drive :
+tiles et table des sprites, écrites dans le frame buffer 32X, que le
+68000 transfère par DMA vers la VRAM pendant le VBlank. Pour l'instant,
+un compteur ; bientôt, les objets du bord de la route, mis à l'échelle.
+
 Le projet fait suite à SuperVDP (deux plans de tiles 16 × 16) et en
 garde le simulateur **pixel** (C, MiniFB, deux threads Master et Slave,
 VBlank à 60 Hz, H_INT, API qui imite les registres : `vdp_dram`,
@@ -52,9 +57,10 @@ et se place à l'intérieur des virages qui arrivent.
 | B maintenu       | K        | frein                                   |
 | Start maintenu   | Entrée   | pause                                   |
 
-Pas encore de sprites (voiture, adversaires, décor du bord de la route),
-et le haut de l'écran n'est qu'un ciel en dégradé : ils viendront des
-plans et des sprites de la Mega Drive.
+En haut à gauche, un compteur en sprites Mega Drive : la distance
+parcourue. Pas encore d'objets sur le circuit (voiture, adversaires,
+décor du bord de la route), et le haut de l'écran n'est qu'un ciel en
+dégradé : ils viendront des sprites et des plans de la Mega Drive.
 
 ## Registres COMM
 
@@ -62,6 +68,8 @@ plans et des sprites de la Mega Drive.
 |------|-----------------|----------------------------------------------|
 | 1    | Master → Slave  | numéro de l'image à dessiner                 |
 | 2    | Slave → Master  | dernière image terminée                      |
+| 3    | Master → 68000  | image prête : le 68000 peut prendre le VDP 32X et transférer |
+| 0    | 68000 → Master  | image transférée, VDP 32X rendu aux SH2      |
 | 4, 5 | 68000 → SH2     | distance de la caméra sur le circuit (32 bits) |
 | 6    | 68000 → SH2     | écart latéral de la voiture (signé)          |
 
@@ -130,6 +138,31 @@ bande change (16,5 fois par image en moyenne sur la démo). C'est le
 Master parce qu'il a la priorité sur le bus ; la palette n'est
 accessible que pendant les blancs. Le Slave n'a pas d'interruption.
 
+**La Mega Drive, le bit FM et l'échange retardé** (`race/race.c`,
+`race/hud.c`, `demo/md68k.c`). Le frame buffer, la palette et les
+registres du VDP 32X n'appartiennent qu'à un côté à la fois, selon le
+bit FM : aux SH2 pendant l'affichage (table de lignes, SFT et palette en
+H_INT), au 68000 pendant le VBlank. Une image se termine ainsi :
+1. les SH2 ont écrit la table de lignes et, dans la zone de transfert du
+   frame buffer de dessin (`MD_STAGE_OFFSET`, `race/shared.h`), les tiles
+   et les entrées de la table des sprites Mega Drive ; le Master écrit
+   `COMM_READY` et ne touche plus au VDP 32X ;
+2. au début du VBlank, le 68000 prend le VDP 32X (FM = 0), transfère par
+   DMA la zone de transfert vers la VRAM, le rend (FM = 1) à la fin du
+   DMA et écrit `COMM_DMA_DONE` ;
+3. le Master échange alors les frame buffers : pendant le VBlank,
+   l'échange est immédiat. Il est retardé jusque-là parce que le 68000 ne
+   voit que le frame buffer qui n'est pas affiché : la route 32X et les
+   sprites Mega Drive de la même image s'affichent ensemble ;
+4. le Master prépare la ligne 0 de la nouvelle image (SFT, couleurs). Sa
+   routine H_INT de la dernière ligne affichée l'a déjà fait pour l'image
+   en cours, au cas où aucune nouvelle image ne serait prête.
+
+Les entrées 0 à 9 de la table des sprites restent au 68000 ; celles des
+SH2 commencent à la dixième. Les sprites Mega Drive sont devant la route
+(bit PRI du 32X). Le compteur (`hud.c`) est le premier client de ce
+chemin : cinq chiffres refaits à chaque image, 336 octets de DMA.
+
 **Le partage du travail.** Chaque CPU projette lui-même le circuit pour
 ses seules lignes (paires pour le Master, impaires pour le Slave), et
 obtient exactement les valeurs d'une projection de tout l'écran : aucun
@@ -143,19 +176,41 @@ pour l'instant ; l'unité DIVU du SH7604 la remplacera si le banc le
 justifie.
 
 **Code et cache.** Le moteur suppose le cache du SH2 en mode « 2 voies +
-RAM » : le code de chaque image (`project.c`, `render_line`, 1 472
-octets) dans les 2 Ko de RAM interne ; la préparation des lignes, faite
-une fois, en SDRAM (section `.text.sdram`).
+RAM » : le code de chaque image (`project.c`, `render_line`, `hud.c`,
+1 972 octets) dans les 2 Ko de RAM interne ; la préparation des lignes,
+faite une fois, en SDRAM (section `.text.sdram`).
+
+## Le simulateur
+
+`pixel/` modélise la 32X sans le 68000 : deux threads Master et Slave, le
+VDP 32X (`vdp.c`), l'interface (`interface.c` : COMM, V_INT, H_INT, bit
+FM) et, depuis cette version, une couche Mega Drive réduite aux sprites
+(`mdvdp.c`) :
+- VRAM, CRAM, table des sprites (80 entrées, liste chaînée), affichage
+  avec les limites du mode H40 (20 sprites et 320 pixels par ligne,
+  comptés quand on les dépasse) ; pas encore de plans ;
+- superposition avec l'image 32X selon le bit PRI (lu ainsi : à 1, la
+  Mega Drive devant ; sens à confirmer dans le manuel) et le bit de
+  transparence des couleurs 32X ;
+- DMA depuis le frame buffer 32X, chronométré : environ 205 octets par
+  ligne de VBlank, 18 pendant l'affichage (Genesis Technical Overview ;
+  à confirmer avec la source 32X) ; le 68000 attend la fin ;
+- **bit FM** : tout accès au VDP 32X par un CPU qui ne l'a pas (frame
+  buffer, palette, SFT, FBCR) arrête le simulateur avec un message.
+
+Le programme 68000 (`demo/md68k.c`) est appelé au début du VBlank
+(`md_vint`), puis à chaque ligne du VBlank (`md_vblank_line`).
 
 ## Mesurer : `VDP_STATS=1`
 
 Toutes les 5 secondes dans la fenêtre, et à chaque capture sans fenêtre :
 
 ```
-acces bus par image : master derniere 112 ... | total derniere 224 = 0.3 % du plafond 76800
-cycles bus VDP (partages) : 224 ecritures x 5 = 1120 / 384000 (0.3 %)
-cycles CPU estimes (modele du jeu + ecritures 3..5 c) : master 77949 + ecritures = 78285..78509 / 384000 ...
-derniere image : 0.20 image(s) de 1/60 s au mieux -> 60 images/s
+acces bus par image : master derniere 282 ... | total derniere 394 = 0.5 % du plafond 76800
+cycles bus VDP (partages) : 394 ecritures x 5 = 1970 / 384000 (0.5 %)
+cycles CPU estimes (modele du jeu + ecritures 3..5 c) : master 97649 + ecritures = 98495..99059 / 384000 ...
+DMA Mega Drive : dernier VBlank 336 octets en 2 lignes, ... | echanges de frame buffer 230, dans le VBlank de leur DMA 228 | ...
+derniere image : 0.26 image(s) de 1/60 s au mieux -> 60 images/s
 ```
 
 - **Écritures** : comptées exactement par le simulateur (toutes passent
@@ -174,6 +229,12 @@ derniere image : 0.20 image(s) de 1/60 s au mieux -> 60 images/s
   C'est un modèle, pas une 32X réelle, mais le nombre d'instructions est
   exact. Les interruptions du Master (H_INT, changements de couleurs)
   sont estimées.
+- **DMA Mega Drive** : les octets transférés au dernier VBlank et les
+  lignes qu'ils ont prises, le pire de la période, les DMA qui ont
+  débordé sur l'affichage ; les échanges de frame buffer, et combien ont
+  eu lieu dans le VBlank de leur DMA (les autres : le Master a vu la fin
+  du DMA après la fin du VBlank, ses sprites ont précédé la route d'une
+  image) ; les lignes à plus de 20 sprites ou 320 pixels.
 - **Verdict** : la dernière ligne donne la durée de l'image en images de
   1/60 s (le CPU le plus lent, ou le bus du VDP). Au-delà de 1, on ne
   tient pas 60 images/s.
@@ -194,10 +255,13 @@ statistiques disent ce que ferait la vraie machine.
    projection de chaque CPU (une ligne sur deux) doit donner exactement
    celle de tout l'écran, l'image être identique au rendu naïf, 224
    écritures par image, et la route toujours visible en bas de l'écran.
+   Enfin le compteur : 20 000 valeurs, tiles et table des sprites relues
+   comme le VDP Mega Drive, comparées aux chiffres dessinés directement.
 2. Le simulateur complet sans fenêtre (H_INT comprises) : la manette suit
    un scénario qui met la démo en pause avant chaque capture, et l'image
    capturée doit être identique, octet pour octet, à celle que
-   `test_race` calcule pour le même scénario. Une image qui diffère fait
+   `test_race` calcule pour le même scénario, compteur compris : tout le
+   chemin SH2 → frame buffer → DMA → VRAM → sprites est vérifié. Une image qui diffère fait
    relancer le scénario une fois : sur une machine chargée, une H_INT
    servie trop tard décale les couleurs des lignes suivantes (compté « en
    retard » dans le journal).
@@ -213,11 +277,12 @@ statistiques disent ce que ferait la vraie machine.
 
 | Dossier / fichier       | Rôle                                                    |
 |-------------------------|---------------------------------------------------------|
-| `pixel/`                | simulateur 32X : VDP, interface (COMM, V_INT, H_INT), plates-formes |
+| `pixel/`                | simulateur 32X : VDP, interface (COMM, V_INT, H_INT, FM), sprites Mega Drive, plates-formes |
 | `race/race.c`           | boucles Master et Slave, relevé des registres, interruptions, échange de frame buffer |
 | `race/world.h`          | circuit, caméra, constantes de projection              |
 | `race/project.c`        | projection : description de chaque ligne d'écran       |
 | `race/render.c`         | lignes préparées, choix d'une ligne (table, SFT, bande) |
+| `race/hud.c`            | compteur en sprites Mega Drive (tiles, table des sprites) |
 | `race/cost.h`           | modèle de coûts (cycles estimés)                       |
 | `race/shared.h`         | registres COMM, scène partagée, accès sans cache       |
 | `demo/`                 | circuit et programme 68000 de la démo                  |
@@ -236,6 +301,10 @@ statistiques disent ce que ferait la vraie machine.
   routine H_INT du Master écrive SFT et quatre couleurs de la palette
   dans le HBlank (le simulateur ne mesure pas ce temps). Sinon, le
   principe des bandes par la palette ne tient pas.
+- **À vérifier aussi** : que le DMA du VDP Mega Drive puisse lire le
+  frame buffer 32X ($840000 ; hors des sources documentées, mais
+  l'adresse se code avec DMD0 = SA23), et à quel débit ; le sens du bit
+  PRI.
 - Programme de démarrage SH2 à écrire : cache en 2 voies + RAM, code de
   chaque image en C000 0000h, V_INT et H_INT démasquées sur le Master.
 - `tools/sh2cycles/build-tools.sh` construit la chaîne `sh-elf` (gcc

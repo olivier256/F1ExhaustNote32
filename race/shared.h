@@ -22,12 +22,39 @@
 #define COMM_FRAME 1      /* Master -> Slave : image à dessiner (1, 2, ...) */
 #define COMM_SLAVE_DONE 2 /* Slave -> Master : dernière image terminée */
 
+/* Échange avec le 68000 (voir race.c, « Déroulement d'une image ») */
+#define COMM_READY                                                             \
+    3 /* Master -> 68000 : image prête dans le frame                          \
+         buffer de dessin (table de lignes, données pour                      \
+         la Mega Drive) ; les SH2 ne touchent plus au VDP                      \
+         32X jusqu'à COMM_DMA_DONE */
+#define COMM_DMA_DONE                                                          \
+    0 /* 68000 -> Master : image transférée vers la Mega                     \
+         Drive, VDP 32X rendu aux SH2 (bit FM) */
+
 /* Écrits par le 68000 à chaque VBlank, relevés par le Master une fois par
    image (voir project.h, View) */
 #define COMM_POSITION_HI 4 /* distance de la caméra, 16 bits de poids fort */
 #define COMM_POSITION_LO 5 /* 16 bits de poids faible */
 #define COMM_PLAYER_X 6    /* écart latéral de la voiture, signé */
-/* COMM 0, 3 et 7 : libres (les adversaires, plus tard) */
+/* COMM 7 : libre */
+
+/* ---- Données pour la Mega Drive
+   ---------------------------------------------- Les SH2 préparent, dans le
+   frame buffer de dessin, à MD_STAGE_OFFSET (après les lignes préparées), ce
+   que le 68000 transfère par DMA vers la VRAM pendant le VBlank : +0 : nombre
+   d'octets de tiles (multiple de 32) +2 : nombre d'entrées de la table des
+   sprites +4 : les tiles, puis les entrées de la table des sprites (8 octets
+          chacune, au format du VDP Mega Drive, voir pixel/mdvdp.h).
+   Les tiles vont en VRAM à partir de la tile MD_SH2_FIRST_TILE ; les
+   entrées, à partir de l'entrée MD_RESERVED_SPRITES de la table (les
+   premières sont au 68000). La dernière entrée des SH2 a le lien 0. */
+#define MD_STAGE_OFFSET 0x14000
+#define MD_STAGE_HEADER 4
+#define MD_STAGE_MAX_BYTES 6144 /* budget du DMA par VBlank (environ) */
+#define MD_SPRITE_TABLE 0xD800  /* en VRAM */
+#define MD_SH2_FIRST_TILE 0x100 /* en VRAM : 0x2000 */
+#define MD_RESERVED_SPRITES 10
 
 /* ---- Scène ---------------------------------------------------------------
    Tout ce qu'il faut pour dessiner une image : les deux CPU dessinent avec

@@ -20,15 +20,15 @@ l'ajustement ; CYCLES_ROAD_LINE est le surcoût d'une ligne de route.
 import sys
 import numpy as np
 
-FIELDS = ["segments", "roadLines", "skyLines"]
+FIELDS = ["segments", "roadLines", "skyLines", "hud"]
 # Coefficients ajustés, et la constante de cost.h correspondante ; "frame"
 # vaut 1 pour chaque image (terme constant)
 # (skyLines n'y est pas : roadLines + skyLines vaut toujours 112, le coût
 # d'une ligne de ciel est dans le terme constant, voir race/cost.h)
 FITTED = [("frame", "CYCLES_FRAME"), ("segments", "CYCLES_SEGMENT"),
-          ("roadLines", "CYCLES_ROAD_LINE")]
+          ("roadLines", "CYCLES_ROAD_LINE"), ("hud", "CYCLES_HUD")]
 
-FB_WRITES_PER_CPU = 112  # une entrée de la table de lignes par ligne
+
 FRAME_CYCLES = 384000
 
 
@@ -36,10 +36,11 @@ def load(folder, cpu):
     costs = []
     for line in open("%s/costs_%s.csv" % (folder, cpu)):
         p = line.strip().split(";")
-        row = dict(zip(FIELDS, map(int, p[1:4])))
+        row = dict(zip(FIELDS, map(int, p[1:5])))
         row["frame"] = 1
-        row["model"] = int(p[4])
-        row["print"] = p[5]
+        row["model"] = int(p[5])
+        row["print"] = p[6]
+        row["fbWrites"] = int(p[7])
         costs.append(row)
     measured = []
     for line in open("%s/cycles_%s.txt" % (folder, cpu)):
@@ -57,7 +58,7 @@ def load(folder, cpu):
         sys.exit("%s : le code SH2 n'affiche pas comme l'hote (images %s)"
                  % (cpu, bad[:10]))
     for i, m in enumerate(measured):
-        expected = FB_WRITES_PER_CPU
+        expected = costs[i]["fbWrites"]
         if m["fb"] != expected:
             sys.exit("%s : image %d, %d ecritures FB au lieu de %d"
                      % (cpu, i, m["fb"], expected))
@@ -70,8 +71,9 @@ def main():
     for cpu in ("master", "slave"):
         costs, measured = load(folder, cpu)
         print("%s : %d images, empreintes identiques a l'hote, %d ecritures "
-              "FB par image (la table de lignes)"
-              % (cpu, len(costs), FB_WRITES_PER_CPU))
+              "FB par image (table de lignes%s)"
+              % (cpu, len(costs), costs[0]["fbWrites"],
+                 ", compteur" if costs[0]["hud"] else ""))
         for c, m in zip(costs, measured):
             rows.append(c)
             ys.append(m)

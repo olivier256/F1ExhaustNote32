@@ -19,12 +19,17 @@
       d'une projection de tout l'écran, et l'image, identique au rendu
       naïf ; 224 écritures par image. La dernière ligne de l'écran doit
       toujours montrer la route (rien ne manque sous la voiture).
-   3. Avec --ppm : l'image de référence d'un scénario du simulateur
+   3. Le compteur en sprites Mega Drive : hud_build écrit tiles et
+      entrées de la table des sprites dans la zone de transfert ; le test
+      les relit comme le VDP Mega Drive (écrit indépendamment de
+      pixel/mdvdp.c) et compare aux chiffres dessinés directement.
+   4. Avec --ppm : l'image de référence d'un scénario du simulateur
       complet (tests/run_tests.sh).
       test_race --ppm IMAGES [--pad DEBUT-FIN:BOUTONS]... fichier.ppm
       Le programme 68000 tourne IMAGES fois avec la même manette que
       f1en32_headless ; l'image est calculée par le rendu naïf avec les
-      registres COMM obtenus. Le scénario doit mettre la démo en pause
+      registres COMM obtenus, compteur compris (sprites Mega Drive devant
+      la route). Le scénario doit mettre la démo en pause
       (Start) avant la capture : l'image capturée ne dépend plus alors du
       minutage.
 
@@ -40,7 +45,9 @@
 #include "cost.h"
 #include "framebuffer.h"
 #include "game.h"
+#include "hud.h"
 #include "interface.h"
+#include "mdvdp.h"
 #include "platform.h"
 #include "project.h"
 #include "race.h"
@@ -69,6 +76,21 @@ void vdp_dram_write16(uint32_t offset, uint16_t pixels) {
 }
 
 volatile uint16_t comm[COMM_COUNT];
+
+/* Le programme 68000 de la démo appelle aussi le VDP Mega Drive et le bit
+   FM : ici, sans effet (aucune image n'est jamais prête, COMM_READY reste
+   à 0, il ne transfère rien) */
+void md_vdp_set_sprite_table(uint16_t a) { (void)a; }
+void md_vdp_write_vram(uint16_t a, uint16_t w) { (void)a, (void)w; }
+void md_vdp_write_cram(int i, uint16_t c) { (void)i, (void)c; }
+void md_vdp_dma_from_32x(uint32_t o, uint16_t a, uint32_t n) {
+    (void)o, (void)a, (void)n;
+}
+int md_vdp_dma_busy(void) { return 0; }
+uint16_t md_read_32x_fb16(uint32_t o) {
+    return (uint16_t)(fb[o] << 8 | fb[o + 1]);
+}
+void interface_write_fm(int fm) { (void)fm; }
 
 #define MAX_PAD_STEPS 32
 static struct {
@@ -307,7 +329,110 @@ static void testFrames(void) {
                worstCycles[cpu]);
 }
 
-/* ---- 3. Image de référence d'un scénario ------------------------------- */
+/* ---- 3. Compteur en sprites Mega Drive ------------------------------------
+ */
+
+/* Ce qu'afficherait le VDP Mega Drive des entrées des SH2 : index de
+   couleur (0 : transparent) de chaque pixel de l'écran. Lecture directe
+   des entrées et des tiles de la zone de transfert : la tile t est à
+   l'octet (t - MD_SH2_FIRST_TILE) x 32 des tiles. */
+static uint8_t mdIndex[SCREEN_HEIGHT][SCREEN_WIDTH];
+
+static uint16_t fbWord(uint32_t o) {
+    return (uint16_t)(fb[o] << 8 | fb[o + 1]);
+}
+
+static void readStagedSprites(void) {
+    memset(mdIndex, 0, sizeof mdIndex);
+    const uint32_t tileBytes = fbWord(MD_STAGE_OFFSET);
+    const uint32_t count = fbWord(MD_STAGE_OFFSET + 2);
+    const uint32_t tiles = MD_STAGE_OFFSET + MD_STAGE_HEADER;
+    const uint32_t table = tiles + tileBytes;
+    unsigned entry = MD_RESERVED_SPRITES, seen = 0;
+    while (seen < count) {
+        if (entry < MD_RESERVED_SPRITES ||
+            entry >= MD_RESERVED_SPRITES + count) {
+            fail("lien de la table des sprites", -1, -1, entry, 0);
+            return;
+        }
+        const uint32_t e = table + (entry - MD_RESERVED_SPRITES) * 8;
+        const int y = (fbWord(e) & 0x3FF) - 128;
+        const uint16_t sl = fbWord(e + 2);
+        const uint16_t attr = fbWord(e + 4);
+        const int x = (fbWord(e + 6) & 0x1FF) - 128;
+        const int w = ((sl >> 10) & 3) + 1, h = ((sl >> 8) & 3) + 1;
+        const unsigned tile = (attr & 0x7FF) - MD_SH2_FIRST_TILE;
+        for (int r = 0; r < h * 8; r++)
+            for (int c = 0; c < w * 8; c++) {
+                const unsigned t = tile + (unsigned)(c / 8 * h + r / 8);
+                const uint8_t b =
+                    fb[tiles + t * 32 + (r % 8) * 4 + (c % 8) / 2];
+                const int p = (c % 2) ? (b & 15) : (b >> 4);
+                if (p && y + r >= 0 && y + r < SCREEN_HEIGHT && x + c >= 0 &&
+                    x + c < SCREEN_WIDTH && mdIndex[y + r][x + c] == 0)
+                    mdIndex[y + r][x + c] = (uint8_t)p;
+            }
+        seen++;
+        entry = sl & 0x7F;
+        if (entry == 0)
+            break;
+    }
+    if (seen != count || entry != 0)
+        fail("fin de la table des sprites", -1, -1, seen, count);
+}
+
+/* Les chiffres, dessinés directement */
+static uint8_t refHud(uint32_t position, int x, int y) {
+    if (x < HUD_X || x >= HUD_X + 8 * HUD_DIGITS || y < HUD_Y ||
+        y >= HUD_Y + 16)
+        return 0;
+    uint32_t v = hud_value(position);
+    if (v > 99999)
+        v = 99999;
+    unsigned digits[HUD_DIGITS];
+    for (int i = HUD_DIGITS - 1; i >= 0; i--, v /= 10)
+        digits[i] = v % 10;
+    return hud_digit_pixel(digits[(x - HUD_X) / 8], (x - HUD_X) % 8, y - HUD_Y);
+}
+
+static void testHud(void) {
+    unsigned long checked = 0;
+    for (int i = 0; i < 20000; i++) {
+        const uint32_t position = i < 10000 ? (uint32_t)i * 16 + (i & 15)
+                                            : rnd() % (99999u * 16 + 2000);
+        const unsigned long before = writes;
+        const uint32_t bytes = hud_build(position);
+        if (bytes > MD_STAGE_MAX_BYTES ||
+            MD_STAGE_OFFSET + MD_STAGE_HEADER + bytes > VDP_DRAM_SIZE)
+            fail("taille du transfert", -1, -1, (long)bytes,
+                 MD_STAGE_MAX_BYTES);
+        if (writes - before != 2 + bytes / 2)
+            fail("ecritures du compteur", -1, -1, (long)(writes - before),
+                 (long)(2 + bytes / 2));
+        readStagedSprites();
+        for (int y = 0; y < SCREEN_HEIGHT; y++)
+            for (int x = 0; x < SCREEN_WIDTH; x++)
+                if (mdIndex[y][x] != refHud(position, x, y)) {
+                    fail("compteur", y, x, mdIndex[y][x],
+                         refHud(position, x, y));
+                    y = SCREEN_HEIGHT;
+                    break;
+                }
+        checked++;
+    }
+    printf("compteur : %lu valeurs verifiees, %u octets par image a "
+           "transferer\n",
+           checked, (unsigned)hud_build(0));
+}
+
+/* ---- 4. Image de référence d'un scénario ------------------------------- */
+
+/* Couleur Mega Drive -> 0x00RRGGBB, comme le simulateur (mdvdp.c) */
+static uint32_t mdRgb(uint16_t color) {
+    static const uint8_t level[8] = {0, 36, 73, 109, 146, 182, 219, 255};
+    return (uint32_t)level[(color >> 1) & 7] << 16 |
+           (uint32_t)level[(color >> 5) & 7] << 8 | level[(color >> 9) & 7];
+}
 
 static uint32_t rgbOf(uint16_t color) {
     uint8_t r = color & 0x1F, g = (color >> 5) & 0x1F, b = (color >> 10) & 0x1F;
@@ -395,7 +520,10 @@ static int writeReference(int argc, char *argv[]) {
         ShownLine l;
         refLine(&allLines[y], y, &l);
         for (int px = 0; px < SCREEN_WIDTH; px++) {
-            const uint32_t c = rgbOf(colorOf(l.index[px], l.dark));
+            const uint8_t md = refHud(v.position, px, y);
+            const uint32_t c = md ? mdRgb(md == HUD_COLOR_DIGIT ? HUD_CRAM_DIGIT
+                                                                : HUD_CRAM_BACK)
+                                  : rgbOf(colorOf(l.index[px], l.dark));
             const uint8_t rgb[3] = {(uint8_t)(c >> 16), (uint8_t)(c >> 8),
                                     (uint8_t)c};
             fwrite(rgb, 1, 3, f);
@@ -420,9 +548,16 @@ int main(int argc, char *argv[]) {
            "au demarrage\n",
            (unsigned)layout.end, VDP_DRAM_SIZE,
            (unsigned)(VDP_DRAM_SIZE - layout.end), writes);
+    if (layout.end > MD_STAGE_OFFSET ||
+        MD_STAGE_OFFSET + MD_STAGE_HEADER + MD_STAGE_MAX_BYTES >
+            VDP_DRAM_SIZE) {
+        printf("ECHEC : zone de transfert vers la Mega Drive mal placee\n");
+        return 1;
+    }
 
     testLines();
     testFrames();
+    testHud();
 
     if (failures) {
         printf("%lu echecs\n", failures);

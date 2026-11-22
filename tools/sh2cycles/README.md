@@ -7,16 +7,16 @@ coûts de `race/cost.h`. Ce banc donne à ce modèle des valeurs mesurées.
 
 ## Ce que fait le banc
 
-1. Le moteur (`race/project.c`, `race/render.c`) est compilé **pour
-   SH2** (`sh-elf-gcc -m2 -O2`), sans les compteurs du modèle : c'est le
+1. Le moteur (`race/project.c`, `race/render.c`, `race/hud.c`) est
+   compilé **pour SH2** (`sh-elf-gcc -m2 -O2`), sans les compteurs du modèle : c'est le
    code qui tournera sur la 32X. Il est lié aux adresses de la 32X
    (`bench.ld`) : code, données (circuit) et pile en SDRAM (0600 0000h),
    frame buffer en 2400 0000h.
 2. Le programme (`bench.c`) prépare les lignes (hors mesure), puis
    projette le circuit et écrit la table de lignes pour les lignes d'un
-   CPU, pendant 180 images (`frames.h` : des positions réparties sur tout
-   le circuit de la démo, écart latéral varié). Il tourne sous
-   `qemu-sh4eb`, avec le greffon
+   CPU (et le compteur pour le Master), pendant 180 images (`frames.h` :
+   des positions réparties sur tout le circuit de la démo, écart latéral
+   varié). Il tourne sous `qemu-sh4eb`, avec le greffon
    `sh2cycles_plugin.c` qui mesure chaque image, d'après un modèle du
    SH2 :
    - temps de chaque instruction (SH7604 Hardware Manual) : 1 cycle, sauf
@@ -30,7 +30,8 @@ coûts de `race/cost.h`. Ce banc donne à ce modèle des valeurs mesurées.
    - par défaut, le cache est en mode « 2 voies + RAM » (registre CCR du
      SH2 ; 32X Hardware Manual, « Cache ») : 2 Ko de cache à 2 voies, et
      2 Ko de RAM interne en C000 0000h, sans attente, où se trouve le code
-     de chaque image, `project.c` et `render_line` (`bench_ram.ld`) ; la
+     de chaque image, `project.c`, `render_line` et `hud.c`
+     (`bench_ram.ld`) ; la
      préparation des lignes, faite une fois, reste en SDRAM. C'est la
      configuration que suppose le moteur, comme SuperVDP. qemu
      refusant les adresses au-delà de 2 Go, la RAM interne y est placée
@@ -42,7 +43,8 @@ coûts de `race/cost.h`. Ce banc donne à ce modèle des valeurs mesurées.
 3. Sur l'hôte, `costs.c` calcule les compteurs du modèle pour les mêmes
    images. `fit.py` vérifie que le code SH2 donne exactement le même
    affichage (empreintes de ce que le VDP montrerait : table de lignes,
-   SFT, bandes) et écrit 112 mots par image (sa moitié de la table), puis
+   SFT, bandes) et écrit 112 mots par image (sa moitié de la table ; 282
+   pour le Master, compteur compris), puis
    ajuste les coûts unitaires par moindres carrés.
 
 Non modélisé : le conflit entre lecture d'instruction et accès aux

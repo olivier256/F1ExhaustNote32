@@ -12,9 +12,10 @@ endif()
 find_package(Threads REQUIRED)
 
 # ---- Simulateur 32X « pixel » ----------------------------------------------
-# VDP, interface (COMM, V_INT) et plates-formes : sans rapport avec le moteur.
+# VDP 32X, VDP Mega Drive (sprites), interface (COMM, V_INT, H_INT, FM) et
+# plates-formes : sans rapport avec le moteur.
 
-set(PIXEL_SOURCES pixel/vdp.c pixel/interface.c)
+set(PIXEL_SOURCES pixel/vdp.c pixel/interface.c pixel/mdvdp.c)
 
 # Fenêtre : MiniFB (sous-module git). Sans lui, seules les cibles sans
 # fenêtre sont construites (tests, captures).
@@ -65,7 +66,7 @@ target_include_directories(demo_data PUBLIC race ${GENERATED})
 
 # ---- Moteur + démo ---------------------------------------------------------
 
-set(RACE_ENGINE race/project.c race/render.c)
+set(RACE_ENGINE race/project.c race/render.c race/hud.c)
 set(RACE_SOURCES
 	race/race.c
 	race/framebuffer.c

@@ -20,7 +20,14 @@
 
 /* Frame buffer de dessin (celui qui n'est pas affiché) */
 extern uint16_t *vdp_dram;
+
+/* Palette, relue par le VDP à chaque ligne. Les CPU l'écrivent par
+   vdp_write_palette(), qui vérifie le bit FM (voir interface.h). Bit 15
+   d'une couleur : transparence (« through bit ») vers l'image Mega
+   Drive, quand celle-ci est derrière. */
 extern uint16_t vdp_palette[VDP_PALETTE_SIZE];
+void vdp_write_palette(int index, uint16_t color);
+#define PALETTE_THROUGH 0x8000
 
 /* ---- Zone overwrite -------------------------------------------------------
    Sur 32X, le frame buffer de dessin est visible deux fois : en
@@ -148,6 +155,13 @@ void vdp_print_write_stats(const char *label);
 
 /* Registres */
 extern volatile uint16_t *const bitmapModeRegister;
+/* Bitmap Mode Register, bit 7 (PRI) : priorité entre l'image 32X et
+   l'image Mega Drive. Le simulateur le lit ainsi : à 1, l'image Mega
+   Drive passe devant (ses pixels non transparents cachent la 32X) ; à 0,
+   la 32X est devant, et l'image Mega Drive ne se voit qu'à travers les
+   couleurs 32X qui ont le bit PALETTE_THROUGH. Sens exact à confirmer
+   dans le 32X Hardware Manual. */
+#define BITMAP_PRI 0x0080
 
 /* Screen Shift Control Register (2000 4102h), bit SFT : en mode Packed
    Pixel, décale l'affichage d'un point vers la gauche (le pixel x de
@@ -157,6 +171,7 @@ extern volatile uint16_t *const bitmapModeRegister;
    321 octets : prévoir au moins 161 mots par ligne. */
 #define SCREEN_SHIFT_SFT 0x0001
 extern volatile uint16_t *const screenShiftRegister;
+void vdp_write_sft(uint16_t value); /* vérifie le bit FM */
 uint16_t vdp_read_fbcr(void);
 void vdp_write_fbcr(uint16_t value);
 
@@ -172,8 +187,12 @@ void vdp_begin_vblank(void);
 void vdp_end_vblank(void);
 
 /* Décode une ligne affichée du frame buffer affiché vers RGB
-   (VDP_SCREEN_WIDTH pixels, 0x00RRGGBB). */
-void vdp_render_line(int line, uint32_t *rgb);
+   (VDP_SCREEN_WIDTH pixels, 0x00RRGGBB). 'through' (ou NULL) : pour
+   chaque pixel, 1 si sa couleur a le bit PALETTE_THROUGH. */
+void vdp_render_line(int line, uint32_t *rgb, uint8_t *through);
+
+/* Superposition avec l'image Mega Drive (mdvdp.h), selon le bit PRI */
+int vdp_mega_drive_in_front(void);
 
 /* Diagnostics : nombre de VBlank, et nombre de VBlank vus par chaque CPU
    (au moins une lecture du FBCR avec VBLK = 1 pendant ce VBlank). */

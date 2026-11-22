@@ -1,5 +1,7 @@
 #include "vdp.h"
 #include "bigendian.h"
+#include "interface.h"
+#include "mdvdp.h"
 #include "platform.h"
 
 #include <stdio.h>
@@ -41,24 +43,29 @@ int vdp_screen_height(void) { return _screenHeight; }
 
 /* renvoie la valeur active, pas nécessairement la valeur positionnée */
 uint16_t vdp_read_fbcr(void) {
+    interface_check_vdp_access("lecture du FBCR");
     uint16_t value = _activeFS ? FBCR_FS : 0;
 
     if (_inVBlank) {
         value |= FBCR_VBLK;
 
-        /* Diagnostics : ce CPU a vu ce VBlank */
+        /* Diagnostics : ce CPU a vu ce VBlank. Une seule fois par VBlank,
+           même si une interruption du même CPU lit le FBCR au milieu de
+           cette lecture (sinon, plus de VBlank vus que de VBlank) */
         int cpu = platform_cpu_id();
         unsigned long vblank = _vblanks;
-        if (cpu >= 0 && _lastSeenVBlank[cpu] != vblank) {
-            _lastSeenVBlank[cpu] = vblank;
-            _seen[cpu]++;
-        }
+        unsigned long last = _lastSeenVBlank[cpu >= 0 ? cpu : 0];
+        if (cpu >= 0 && last != vblank &&
+            __atomic_compare_exchange_n(&_lastSeenVBlank[cpu], &last, vblank, 0,
+                                        __ATOMIC_ACQ_REL, __ATOMIC_RELAXED))
+            __atomic_fetch_add(&_seen[cpu], 1, __ATOMIC_RELAXED);
     }
 
     return value;
 }
 
 void vdp_write_fbcr(uint16_t value) {
+    interface_check_vdp_access("ecriture du FBCR");
     _requestedFS = value & FBCR_FS;
 
     if (_inVBlank || ((*bitmapModeRegister & 3) == 0))
@@ -82,9 +89,20 @@ void vdp_end_vblank(void) {
 
 static void latchFrameWrites(void);
 
+/* Échanges de frame buffer, et ceux qui ont lieu dans le VBlank du DMA
+   vers la Mega Drive (image 32X et sprites de la même image) */
+static volatile unsigned long _flips = 0, _flipsWithDma = 0;
+
 static void applyFrameBuffer(void) {
-    if (_activeFS != _requestedFS)
-        latchFrameWrites(); /* une image vient d'être terminée */
+    if (_activeFS != _requestedFS) {
+        latchFrameWrites();            /* une image vient d'être terminée */
+        if (*bitmapModeRegister & 3) { /* pas les échanges du démarrage,
+                                           en mode Blank */
+            _flips++;
+            if (md_vdp_dma_in_this_vblank())
+                _flipsWithDma++;
+        }
+    }
     _activeFS = _requestedFS;
 
     displayFrameBuffer = _activeFS ? vdp_dram1 : vdp_dram0;
@@ -253,6 +271,18 @@ void vdp_print_write_stats(const char *label) {
     }
     fprintf(stderr, "\n");
 
+    /* Mega Drive : DMA du VBlank depuis le frame buffer 32X, et échanges
+       de frame buffer faits dans le VBlank de leur DMA */
+    md_vdp_stats ms;
+    md_vdp_get_stats(&ms, 1);
+    fprintf(stderr,
+            "[%s] DMA Mega Drive : dernier VBlank %u octets en %u lignes, "
+            "max (periode) %u octets, debordements sur l'affichage %lu | "
+            "echanges de frame buffer %lu, dans le VBlank de leur DMA %lu | "
+            "lignes de sprites en surnombre %lu\n",
+            label, ms.lastVBlankBytes, ms.lastVBlankLines, ms.maxVBlankBytes,
+            ms.dmaInDisplay, _flips, _flipsWithDma, ms.spriteOverflowLines);
+
     /* Durée de l'image, en images de 1/60 s : le CPU le plus lent (au
        mieux, écritures à 3 cycles) ou le bus du VDP. Au-delà de 1, on ne
        tient pas 60 images/s. */
@@ -281,7 +311,22 @@ void vdp_print_write_stats(const char *label) {
 
 static inline uint8_t *dramBytes(void) { return (uint8_t *)vdp_dram; }
 
+void vdp_write_palette(int index, uint16_t color) {
+    interface_check_vdp_access("ecriture de la palette");
+    vdp_palette[index & (VDP_PALETTE_SIZE - 1)] = color;
+}
+
+void vdp_write_sft(uint16_t value) {
+    interface_check_vdp_access("ecriture de SFT");
+    *screenShiftRegister = value & SCREEN_SHIFT_SFT;
+}
+
+int vdp_mega_drive_in_front(void) {
+    return (*bitmapModeRegister & BITMAP_PRI) != 0;
+}
+
 void vdp_dram_write8(uint32_t offset, uint8_t pixel) {
+    interface_check_vdp_access("ecriture dans le frame buffer");
     if (offset >= VDP_DRAM_SIZE)
         addressError("ecriture 8 bits", offset);
     countWrite(VDP_AREA_NORMAL, VDP_WRITE_8);
@@ -289,6 +334,7 @@ void vdp_dram_write8(uint32_t offset, uint8_t pixel) {
 }
 
 void vdp_dram_write16(uint32_t offset, uint16_t pixels) {
+    interface_check_vdp_access("ecriture dans le frame buffer");
     if ((offset & 1) || offset + 2 > VDP_DRAM_SIZE)
         addressError("ecriture 16 bits", offset);
     countWrite(VDP_AREA_NORMAL, VDP_WRITE_16);
@@ -297,6 +343,7 @@ void vdp_dram_write16(uint32_t offset, uint16_t pixels) {
 }
 
 void vdp_dram_write32(uint32_t offset, uint32_t pixels) {
+    interface_check_vdp_access("ecriture dans le frame buffer");
     if ((offset & 3) || offset + 4 > VDP_DRAM_SIZE)
         addressError("ecriture 32 bits", offset);
     countWrite(VDP_AREA_NORMAL, VDP_WRITE_32);
@@ -313,6 +360,7 @@ static inline void overwriteByte(uint32_t offset, uint8_t pixel) {
 }
 
 void vdp_overwrite_write8(uint32_t offset, uint8_t pixel) {
+    interface_check_vdp_access("ecriture dans le frame buffer");
     if (offset >= VDP_DRAM_SIZE)
         addressError("ecriture 8 bits", offset);
     countWrite(VDP_AREA_OVERWRITE, VDP_WRITE_8);
@@ -320,6 +368,7 @@ void vdp_overwrite_write8(uint32_t offset, uint8_t pixel) {
 }
 
 void vdp_overwrite_write16(uint32_t offset, uint16_t pixels) {
+    interface_check_vdp_access("ecriture dans le frame buffer");
     if ((offset & 1) || offset + 2 > VDP_DRAM_SIZE)
         addressError("ecriture 16 bits", offset);
     countWrite(VDP_AREA_OVERWRITE, VDP_WRITE_16);
@@ -328,6 +377,7 @@ void vdp_overwrite_write16(uint32_t offset, uint16_t pixels) {
 }
 
 void vdp_overwrite_write32(uint32_t offset, uint32_t pixels) {
+    interface_check_vdp_access("ecriture dans le frame buffer");
     if ((offset & 3) || offset + 4 > VDP_DRAM_SIZE)
         addressError("ecriture 32 bits", offset);
     countWrite(VDP_AREA_OVERWRITE, VDP_WRITE_32);
@@ -364,7 +414,7 @@ static uint32_t get_palette_color(uint8_t index) {
     return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
 }
 
-void vdp_render_line(int line, uint32_t *rgb) {
+void vdp_render_line(int line, uint32_t *rgb, uint8_t *through) {
     switch (*bitmapModeRegister & 3) {
     case 1: { // PACKED_PIXEL_MODE
         /* Un pixel = un octet, lus dans l'ordre des adresses : le pixel x est
@@ -378,13 +428,20 @@ void vdp_render_line(int line, uint32_t *rgb) {
         const uint8_t *pixels = (const uint8_t *)displayFrameBuffer +
                                 (uint32_t)lineAddress * 2 +
                                 (*screenShiftRegister & SCREEN_SHIFT_SFT);
-        for (int col = 0; col < VDP_SCREEN_WIDTH; col++)
+        for (int col = 0; col < VDP_SCREEN_WIDTH; col++) {
             rgb[col] = get_palette_color(pixels[col]);
+            if (through)
+                through[col] =
+                    (vdp_palette[pixels[col]] & PALETTE_THROUGH) != 0;
+        }
         break;
     }
     default: // BLANK_MODE ; DIRECT_COLOR_MODE, RUN_LENGTH_MODE : à faire
-        for (int col = 0; col < VDP_SCREEN_WIDTH; col++)
+        for (int col = 0; col < VDP_SCREEN_WIDTH; col++) {
             rgb[col] = 0;
+            if (through)
+                through[col] = 1;
+        }
         break;
     }
 }

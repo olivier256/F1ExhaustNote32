@@ -1,8 +1,40 @@
 #include "interface.h"
 #include "platform.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+
 /* Registres de communication */
 volatile uint16_t comm[COMM_COUNT];
+
+/* ---- Bit FM ------------------------------------------------------------ */
+
+static volatile int _fm = FM_SH2;
+
+void interface_write_fm(int fm) {
+    if (platform_cpu_id() >= 0) {
+        fprintf(stderr, "Interface : FM ecrit par un SH2 (CPU %d)\n",
+                platform_cpu_id());
+        abort();
+    }
+    platform_sync();
+    _fm = fm ? FM_SH2 : FM_68000;
+    platform_sync();
+}
+
+int interface_read_fm(void) { return _fm; }
+
+void interface_check_vdp_access(const char *what) {
+    const int cpu = platform_cpu_id();
+    const int sh2 = cpu >= 0;
+    if (sh2 != (_fm == FM_SH2)) {
+        fprintf(stderr,
+                "Interface : %s par %s alors que FM donne le VDP 32X %s\n",
+                what, sh2 ? (cpu == 0 ? "le Master" : "le Slave") : "le 68000",
+                _fm == FM_SH2 ? "aux SH2" : "au 68000");
+        abort();
+    }
+}
 
 /* ---- Interruptions ------------------------------------------------------ */
 

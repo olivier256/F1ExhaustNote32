@@ -1,7 +1,8 @@
 /* =========================================================================
    Banc sh2cycles, côté SH2 : pour chaque image de frames.h, projette le
    circuit et écrit la table de lignes pour les lignes d'un CPU, avec le
-   vrai code de race/project.c et race/render.c compilé pour SH2 (sans les
+   vrai code de race/project.c, race/render.c et race/hud.c (Master)
+   compilé pour SH2 (sans les
    compteurs du modèle), et marque chaque image pour le greffon qemu qui
    mesure le temps (sh2cycles_plugin.c).
 
@@ -16,6 +17,7 @@
    ========================================================================= */
 
 #include "framebuffer.h"
+#include "hud.h"
 #include "project.h"
 #include "race.h"
 #include "render.h"
@@ -43,6 +45,8 @@ static void drawFrame(const View *v) {
                   BENCH_FIRST_LINE, 2, 0);
     for (int y = BENCH_FIRST_LINE; y < BENCH_SCREEN_HEIGHT; y += 2)
         attributes[y] = (uint8_t)render_line(y, &lines[y], &layout, 0);
+    if (BENCH_FIRST_LINE == 0) /* le compteur : Master seulement */
+        hud_build(v->position);
 }
 
 /* Empreinte de ce que le VDP afficherait : pour chaque ligne, les 320

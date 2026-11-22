@@ -10,7 +10,7 @@
 #    modèle de temps du SH2 (cycles par instruction, branchements,
 #    dépendances, cache et SDRAM). Un programme par CPU.
 #    Cache : par défaut en mode « 2 voies + RAM », le code de chaque image
-#    (project.c, render_line) dans la RAM interne (bench_ram.ld). CACHE=4 : cache en 4 voies, tout en
+#    (project.c, render_line, hud.c) dans la RAM interne (bench_ram.ld). CACHE=4 : cache en 4 voies, tout en
 #    SDRAM (bench.ld), pour comparer.
 # 3. Calcule sur l'hôte les compteurs du modèle pour les mêmes images,
 #    vérifie que le code SH2 donne le même affichage, et ajuste les
@@ -51,7 +51,7 @@ cc -std=c99 -O2 -Irace -o "$OUT/track2c" tools/track2c.c -lm
 "$OUT/track2c" demo/track.txt "$OUT/demo_track" demo_track 2>/dev/null
 
 INC="-Ipixel -Irace -I$T -I$OUT"
-ENGINE="race/project.c race/render.c"
+ENGINE="race/project.c race/render.c race/hud.c"
 DATA="$OUT/demo_track.c demo/content.c"
 
 # ---- Hôte : compteurs du modèle -------------------------------------------
@@ -74,10 +74,11 @@ else
 fi
 
 CFLAGS="-m2 -mb -O2 -std=c99 -ffreestanding -fno-builtin -Wall $INC"
-OBJECTS="$OUT/start.o $OUT/project.o $OUT/render.o $OUT/data.o"
+OBJECTS="$OUT/start.o $OUT/project.o $OUT/render.o $OUT/hud.o $OUT/data.o"
 "${SH_ELF}gcc" -m2 -mb -Wa,--isa=sh2 -c $T/start.S -o "$OUT/start.o"
 "${SH_ELF}gcc" $CFLAGS -c race/project.c -o "$OUT/project.o"
 "${SH_ELF}gcc" $CFLAGS -c race/render.c -o "$OUT/render.o"
+"${SH_ELF}gcc" $CFLAGS -c race/hud.c -o "$OUT/hud.o"
 for f in $DATA; do
   "${SH_ELF}gcc" $CFLAGS -c "$f" -o "$OUT/$(basename "$f" .c).o"
 done

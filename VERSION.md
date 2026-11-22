@@ -927,3 +927,100 @@ Simulateur : attente de la H_INT jusqu'à 2 ms sans fenêtre.
 Tests : affichage du VDP émulé contre le rendu naïf. cost.h réétalonné :
 66 000 cycles par CPU et par image en moyenne, 74 000 au pire (19 %).
 ```
+
+---
+
+Couche Mega Drive, bit FM, DMA du VBlank et échange retardé
+
+**Ce que fait cette version** :
+- Simulateur `pixel/` :
+  - **bit FM** (`interface.c`) : le VDP 32X (frame buffer, palette, SFT,
+    FBCR) n'appartient qu'à un côté à la fois. Tout accès par un CPU qui
+    ne l'a pas arrête le simulateur avec un message. Les CPU écrivent
+    désormais la palette et SFT par `vdp_write_palette` et
+    `vdp_write_sft`, qui vérifient FM ;
+  - **VDP Mega Drive réduit aux sprites** (`mdvdp.c`) : VRAM, CRAM, table
+    des sprites (80 entrées chaînées), affichage avec les limites du mode
+    H40 (20 sprites, 320 pixels par ligne), superposition avec l'image
+    32X selon le bit PRI (sens à confirmer) et le bit de transparence des
+    couleurs 32X ;
+  - **DMA depuis le frame buffer 32X**, chronométré : 205 octets par
+    ligne de VBlank, 18 pendant l'affichage ; le 68000 attend la fin.
+    Nouveau point d'entrée du programme 68000 : `md_vblank_line`, à
+    chaque ligne du VBlank ;
+  - statistiques : octets et lignes de DMA par VBlank, débordements sur
+    l'affichage, échanges de frame buffer faits dans le VBlank de leur
+    DMA, lignes de sprites en surnombre ;
+  - corrections : un VBlank n'est plus compté deux fois comme « vu »
+    quand une interruption lit le FBCR au milieu d'une lecture (le
+    nombre de VBlank ratés devenait négatif) ; la fenêtre attend aussi
+    jusqu'à 2 ms que la H_INT soit servie.
+- Moteur :
+  - **échange retardé** : le Master écrit `COMM_READY` une fois l'image
+    finie, n'accède plus au VDP 32X, attend `COMM_DMA_DONE`, puis échange
+    les frame buffers pendant le VBlank (échange immédiat) et prépare la
+    ligne 0. La H_INT de la dernière ligne affichée prépare la ligne 0 de
+    l'image en cours, pour le cas où aucune nouvelle image n'est prête.
+    La V_INT du Master ne fait plus rien ;
+  - zone de transfert vers la Mega Drive dans le frame buffer de dessin
+    (`MD_STAGE_OFFSET`, `shared.h`) : nombre d'octets de tiles et
+    d'entrées, tiles, entrées de la table des sprites ;
+  - **compteur** (`hud.c`) : la distance parcourue, cinq chiffres en deux
+    sprites Mega Drive (4 × 2 et 1 × 2 cellules), tiles 4 bits par pixel
+    refaites par le Master à chaque image : 336 octets de DMA. Rangées
+    de pixels par table, chiffres par soustractions : ni division ni
+    décalage variable ;
+  - sprites Mega Drive devant la route (bit PRI).
+- Programme 68000 : entrées 0 à 9 de la table des sprites réservées
+  (hors de l'écran, chaînées vers la dixième) ; au début du VBlank, si
+  une image est prête, prise du VDP 32X, deux DMA (tiles, entrées), fin
+  du DMA attendue ligne par ligne, VDP 32X rendu, `COMM_DMA_DONE`.
+- `cost.h` réétalonné, compteur compris ; H_INT estimée à 100 cycles
+  (d'après les attentes du manuel), changement de couleurs à 30.
+- Vérifié :
+  - `test_race` : comme avant, plus le compteur sur 20 000 valeurs
+    (tiles et table des sprites relues comme le VDP Mega Drive, contre
+    les chiffres dessinés directement ; taille du transfert, chaînage
+    des entrées) ;
+  - simulateur complet : les 3 captures identiques à la référence,
+    compteur compris (le chemin SH2 → frame buffer → DMA → VRAM →
+    sprites est vérifié au pixel près) ; aucune violation du bit FM ;
+  - construit et lancé aussi avec la fenêtre (MiniFB sous X11).
+
+**Mesures** :
+- banc SH2, par CPU et par image, hors écritures FB : 69 292 cycles en
+  moyenne, 77 224 au pire (20 % de l'image) ; le compteur coûte 1 941
+  cycles au Master (24 603 dans une première version, qui calculait
+  chaque pixel par une fonction ; réécrit par tables de rangées) ; code
+  de chaque image en RAM interne : 1 972 octets sur 2 048 ;
+- simulateur : Master 23 à 26 % (H_INT comprises), Slave 16 à 18 % ;
+  DMA de 336 octets en 2 lignes de VBlank, sur environ 7 600 possibles.
+
+**Ce qui reste pour plus tard** :
+- les objets du circuit, mis à l'échelle par les SH2 en tiles Mega
+  Drive (la moitié des objets par CPU), avec cache des tiles en VRAM et
+  tailles fixes pour les objets lointains ;
+- à vérifier : le DMA du VDP Mega Drive depuis $840000 et son débit réel,
+  le sens du bit PRI, la H_INT dans le HBlank ;
+- sur cette machine virtuelle, le Master voit parfois la fin du DMA après
+  la fin du VBlank (1 % des échanges) : à surveiller sur Mac ;
+- les plans de la Mega Drive (le ciel), et la RAM interne, presque
+  pleine.
+
+Message de commit proposé :
+
+```
+Couche Mega Drive, bit FM, DMA du VBlank et échange retardé
+
+Simulateur : bit FM (accès au VDP 32X vérifiés), VDP Mega Drive réduit
+aux sprites (VRAM, CRAM, table des sprites, limites H40, superposition
+avec la 32X), DMA depuis le frame buffer 32X chronométré ligne par
+ligne, md_vblank_line. Corrections : VBlank vus comptés une fois,
+attente de la H_INT jusqu'à 2 ms dans la fenêtre.
+
+Moteur : le Master confie l'image au 68000 (COMM_READY), qui prend le
+VDP 32X au VBlank, transfère tiles et table des sprites, le rend
+(COMM_DMA_DONE) ; l'échange de frame buffer suit, dans le même VBlank.
+Compteur de distance en sprites Mega Drive, refait à chaque image.
+cost.h réétalonné : 69 000 cycles par CPU et par image, 77 000 au pire.
+```

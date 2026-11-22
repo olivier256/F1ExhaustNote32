@@ -25,6 +25,26 @@
 
 extern volatile uint16_t comm[COMM_COUNT];
 
+/* ---- Bit FM : qui a le VDP 32X ---------------------------------------------
+   Le frame buffer, la palette et les registres du VDP 32X (FBCR, SFT,
+   mode) ne sont accessibles qu'à un côté à la fois : aux SH2 si FM vaut
+   1, au 68000 s'il vaut 0. C'est le 68000 qui l'écrit (registre de
+   contrôle de l'adaptateur, $A15100, bit 15).
+   Au démarrage du simulateur, FM vaut 1 : comme si le programme 68000
+   avait donné le VDP 32X aux SH2.
+   interface_check_vdp_access() est appelée par chaque accès du simulateur
+   au VDP 32X : si le CPU qui accède ne l'a pas, le simulateur s'arrête
+   avec un message (sur la console, l'accès serait perdu ou donnerait
+   n'importe quoi). Le 68000 est le code qui tourne hors des threads des
+   SH2 (platform_cpu_id() < 0). */
+
+#define FM_SH2 1   /* les SH2 ont le VDP 32X */
+#define FM_68000 0 /* le 68000 l'a */
+
+void interface_write_fm(int fm); /* 68000 seulement */
+int interface_read_fm(void);
+void interface_check_vdp_access(const char *what);
+
 /* ---- Interruptions : vu des CPU (jeu) -------------------------------------
    Interrupt Mask Register (2000 4000h, bits 3 à 0). Il en existe un par
    CPU, à la même adresse : chaque fonction agit sur le registre du CPU
