@@ -1,16 +1,14 @@
 /* =========================================================================
-   Démo : décor de Chun-Li (Street Fighter Alpha), deux plans.
-   - Plan A (devant) : la Muraille et le sol, 768 x 224, ciel transparent.
-   - Plan B (derrière) : les montagnes, 672 x 224.
+   Démo : le circuit de demo/track.txt, sous le décor de demo/assets/sky.bmp.
    ========================================================================= */
 
-#include "supervdp.h"
+#include "race.h"
 
 #include "demo_assets.h" /* généré par bmp2c depuis demo/assets/assets.txt */
+#include "demo_track.h"  /* généré par track2c depuis demo/track.txt */
 
-const SuperVdpContent supervdp_content = {
-    .tiles = &asset_tiles,
-    .planeA = &asset_plane_a,
-    .planeB = &asset_plane_b,
+const RaceContent race_content = {
+    .track = &demo_track,
+    .sky = &asset_sky,
     .palette = asset_palette,
 };

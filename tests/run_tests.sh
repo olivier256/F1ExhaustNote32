@@ -2,13 +2,14 @@
 # =========================================================================
 # Tous les tests, depuis la racine du dépôt :  tests/run_tests.sh
 #
-# 1. test_compose : compose_line contre un rendu de référence naïf, sur
-#    plus d'un million de lignes (voir tests/test_compose.c).
-# 2. Le simulateur complet, sans fenêtre (deux CPU, VBlank, programme
-#    68000 de la démo) : la manette suit un scénario, l'image capturée
-#    doit être identique, octet pour octet, à l'image de référence
-#    calculée par test_compose pour les défilements attendus.
-#    Le simulateur tourne en temps réel : environ 20 secondes en tout.
+# 1. test_race : le moteur contre un rendu de référence naïf, ligne par
+#    ligne puis image par image (voir tests/test_race.c).
+# 2. Le simulateur complet, sans fenêtre (deux CPU, VBlank, H_INT,
+#    programme 68000 de la démo) : la manette suit un scénario qui met la
+#    démo en pause (Start) avant chaque capture ; l'image capturée doit
+#    être identique, octet pour octet, à l'image de référence calculée par
+#    test_race pour le même scénario.
+#    Le simulateur tourne en temps réel : une dizaine de secondes.
 # =========================================================================
 set -e
 
@@ -17,37 +18,44 @@ OUT=$BUILD/tests
 mkdir -p "$OUT"
 
 cmake -S . -B "$BUILD" >/dev/null
-cmake --build "$BUILD" --target test_compose supervdp_headless >/dev/null
+cmake --build "$BUILD" --target test_race f1en32_headless >/dev/null
 
-echo "== compose_line"
-"$BUILD/test_compose"
+echo "== moteur"
+"$BUILD/test_race"
 
-# scenario NOM IMAGES MANETTE CAPTURE XA XB
-#   La manette (DEBUT-FIN:BOUTONS) fait avancer la vue ; la capture est
-#   prise une fois la vue arrêtée. xB = (xA x 352 + 224) / 448.
-scenario() {
-  name=$1 frames=$2 pad=$3 shot=$4 xa=$5 xb=$6
+# run NOM IMAGES "MANETTE..." "CAPTURES..."
+#   Lance le simulateur IMAGES images avec la manette (DEBUT-FIN:BOUTONS),
+#   capture les images demandées, et compare chacune à sa référence.
+run() {
+  name=$1 frames=$2 pads=$3 shots=$4
   padopt=""
-  for step in $pad; do padopt="$padopt --pad $step"; done
+  for step in $pads; do padopt="$padopt --pad $step"; done
+  shotopt=""
+  for shot in $shots; do shotopt="$shotopt --shot $shot:$OUT/$name-$shot.ppm"; done
   # shellcheck disable=SC2086
-  "$BUILD/supervdp_headless" --frames "$frames" $padopt \
-    --shot "$shot:$OUT/$name.ppm" 2>"$OUT/$name.log"
-  "$BUILD/test_compose" --ppm "$xa" "$xb" 0 0 "$OUT/$name.ref.ppm"
-  if cmp -s "$OUT/$name.ppm" "$OUT/$name.ref.ppm"; then
-    echo "OK    $name (xA=$xa, xB=$xb)"
-  else
-    echo "ECHEC $name : $OUT/$name.ppm differe de $OUT/$name.ref.ppm"
-    exit 1
-  fi
-  grep -E "acces bus|cycles|\] derniere image :" "$OUT/$name.log" | head -4 |
-    sed 's/^/      /'
+  "$BUILD/f1en32_headless" --frames "$frames" $padopt $shotopt \
+    2>"$OUT/$name.log"
+  for shot in $shots; do
+    # shellcheck disable=SC2086
+    info=$("$BUILD/test_race" --ppm "$shot" $padopt "$OUT/$name-$shot.ref.ppm")
+    if cmp -s "$OUT/$name-$shot.ppm" "$OUT/$name-$shot.ref.ppm"; then
+      echo "OK    $name, image $shot ($info)"
+    else
+      echo "ECHEC $name, image $shot : $OUT/$name-$shot.ppm differe de" \
+        "$OUT/$name-$shot.ref.ppm"
+      exit 1
+    fi
+    grep -E "\[image $shot\] (acces bus|cycles CPU|derniere image)" \
+      "$OUT/$name.log" | sed 's/^/      /'
+  done
 }
 
 echo "== simulateur complet"
-scenario depart 120 "" 100 0 0
-scenario impair 140 "10-46:R" 100 37 29
-scenario milieu 200 "10-109:R" 180 100 79
-scenario bout 300 "10-209:RC" 280 448 352
-scenario retour 300 "10-209:RC 220-229:L" 280 438 344
+# Au départ, à l'arrêt
+run depart 40 "0-39:S" "30"
+# Accélération, écart à gauche, pause dans le premier virage (décor à
+# une colonne impaire : lignes décalées par SFT) ; reprise,
+# écart à droite, pause dans la descente après la crête
+run course 470 "120-160:L 220-240:S 300-330:R 430-469:S" "232 460"
 
 echo "Tous les tests sont passes."

@@ -18,7 +18,8 @@
    particulier les pixels du mode Packed Pixel écrits par mot :
        vdp_dram[lineAddr + x / 2] = BE16(clcr);     (2 pixels, = MOV.W)
        *(uint32_t *)p = BE32(p0p1p2p3);             (4 pixels, = MOV.L)
-   Pas pour la table de lignes, que le VDP lit comme un mot de l'hôte.
+   De même pour la table de lignes : le simulateur la relit comme le VDP,
+   en mots du SH2.
    ========================================================================= */
 
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__

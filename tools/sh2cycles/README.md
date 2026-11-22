@@ -1,25 +1,21 @@
 # sh2cycles : temps SH2 du moteur, et étalonnage du modèle de coûts
 
-Le simulateur pixel exécute SuperVDP en code natif : il compte exactement
-les écritures dans le frame buffer, mais pas le temps des SH2. Il affiche
-donc des cycles CPU **estimés**, d'après le modèle de coûts de
-`supervdp/cost.h`. Ce banc donne à ce modèle des valeurs mesurées.
+Le simulateur pixel exécute le moteur en code natif : il compte
+exactement les écritures dans le frame buffer, mais pas le temps des
+SH2. Il affiche donc des cycles CPU **estimés**, d'après le modèle de
+coûts de `race/cost.h`. Ce banc donne à ce modèle des valeurs mesurées.
 
 ## Ce que fait le banc
 
-1. `supervdp/compose.c` est compilé **pour SH2** (`sh-elf-gcc -m2 -O2`),
-   sans les compteurs du modèle : c'est le code qui tournera sur la 32X.
-   Il est lié aux adresses de la 32X (`bench.ld`) : code, données, tiles
-   et pile en SDRAM (0600 0000h), frame buffer en 2400 0000h.
-   Par défaut avec `SUPERVDP_ASM=1`, comme sur la console : la fusion
-   passe par l'assembleur `supervdp/merge_sh2.S`, placé lui aussi en RAM
-   interne. Avant la mesure, `test_merge.c` vérifie sur SH2 que
-   l'assembleur donne exactement le résultat du C (`mergeSpan`, la
-   référence) : 591 520 cas, gardes du tampon comprises. `ASM=0` : tout
-   en C, pour comparer.
-2. Le programme (`bench.c`) compose les lignes d'un CPU pour 180 images
-   (`frames.h` : la trajectoire de la démo, et des défilements
-   quelconques). Il tourne sous `qemu-sh4eb`, avec le greffon
+1. Le moteur (`race/project.c`, `race/render.c`) est compilé **pour
+   SH2** (`sh-elf-gcc -m2 -O2`), sans les compteurs du modèle : c'est le
+   code qui tournera sur la 32X. Il est lié aux adresses de la 32X
+   (`bench.ld`) : code, données (décor, circuit) et pile en SDRAM
+   (0600 0000h), frame buffer en 2400 0000h.
+2. Le programme (`bench.c`) projette et dessine les lignes d'un CPU pour
+   180 images (`frames.h` : des positions réparties sur tout le circuit
+   de la démo, écart latéral et défilement du décor variés). Il tourne
+   sous `qemu-sh4eb`, avec le greffon
    `sh2cycles_plugin.c` qui mesure chaque image, d'après un modèle du
    SH2 :
    - temps de chaque instruction (SH7604 Hardware Manual) : 1 cycle, sauf
@@ -33,9 +29,10 @@ donc des cycles CPU **estimés**, d'après le modèle de coûts de
    - par défaut, le cache est en mode « 2 voies + RAM » (registre CCR du
      SH2 ; 32X Hardware Manual, « Cache ») : 2 Ko de cache à 2 voies, et
      2 Ko de RAM interne en C000 0000h, sans attente, où se trouve le code
-     de `compose.c` (`bench_ram.ld`). C'est la configuration que suppose
-     le moteur : le code de rendu ne subit plus aucun défaut de cache,
-     même quand les tiles lues en continu remplissent le cache. qemu
+     du dessin des lignes, `render.c` (`bench_ram.ld`) ; la projection,
+     exécutée une fois par image, reste en SDRAM (les deux ensemble
+     dépassent 2 Ko). C'est la configuration que suppose le moteur, comme
+     SuperVDP. qemu
      refusant les adresses au-delà de 2 Go, la RAM interne y est placée
      en 5000 0000h ; le temps simulé est le même. `CACHE=4` : cache en
      4 voies et tout en SDRAM (`bench.ld`), pour comparer ;
@@ -44,8 +41,8 @@ donc des cycles CPU **estimés**, d'après le modèle de coûts de
    Un programme par CPU : chacun a son propre cache.
 3. Sur l'hôte, `costs.c` calcule les compteurs du modèle pour les mêmes
    images. `fit.py` vérifie que le code SH2 dessine exactement les mêmes
-   pixels (empreintes) et écrit 17 920 mots par image, puis ajuste les
-   coûts unitaires par moindres carrés.
+   pixels (empreintes) et écrit 17 920 mots par image (plus un par ligne
+   décalée), puis ajuste les coûts unitaires par moindres carrés.
 
 Non modélisé : le conflit entre lecture d'instruction et accès aux
 données dans le même cycle, le partage de la SDRAM avec l'autre SH2,
@@ -81,7 +78,7 @@ et son qemu n'a pas les greffons : d'où `build-tools.sh`. Variables :
 `SH_ELF` (préfixe de la chaîne), `QEMU` et `QEMU_INCLUDE` (dossier de
 `qemu-plugin.h`).
 
-La même chaîne `sh-elf` servira à compiler SuperVDP pour la vraie 32X.
+La même chaîne `sh-elf` servira à compiler le moteur pour la vraie 32X.
 
 ## Profil : où passe le temps
 

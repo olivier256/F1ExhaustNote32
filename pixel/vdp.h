@@ -61,9 +61,9 @@ void vdp_overwrite_write32(uint32_t offset, uint32_t pixels);
 /* ---- Écritures normales ---------------------------------------------------
    Mêmes règles que ci-dessus (offset, ordre des octets, alignement), mais
    dans la zone normale (2400 0000h) : tous les octets sont écrits.
-   Pour les pixels : les octets sont rangés dans l'ordre du SH2, comme
-   vdp_dram[...] = BE16(...). Pas pour la table de lignes, que le
-   simulateur relit comme des mots de l'hôte (voir bigendian.h).
+   Les octets sont rangés dans l'ordre du SH2, comme
+   vdp_dram[...] = BE16(...) : pour les pixels comme pour la table de
+   lignes, que le simulateur relit comme le VDP, en mots gros-boutistes.
    Sur console : *(volatile uint16_t *)(0x24000000 + offset) = pixels. */
 #if defined(__sh__)
 /* Sur SH2 : écritures directes dans le frame buffer de dessin, sans cache,

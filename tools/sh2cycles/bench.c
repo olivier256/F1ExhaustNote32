@@ -1,8 +1,8 @@
 /* =========================================================================
-   Banc sh2cycles, côté SH2 : compose les lignes d'un CPU pour chaque image
-   de frames.h, avec le vrai code de supervdp/compose.c compilé pour SH2
-   (sans les compteurs du modèle), et marque chaque image pour le greffon
-   qemu qui mesure le temps (sh2cycles_plugin.c).
+   Banc sh2cycles, côté SH2 : dessine les lignes d'un CPU pour chaque image
+   de frames.h, avec le vrai code de race/project.c et race/render.c
+   compilé pour SH2 (sans les compteurs du modèle), et marque chaque image
+   pour le greffon qemu qui mesure le temps (sh2cycles_plugin.c).
 
    BENCH_FIRST_LINE : 0 pour le Master (lignes paires), 1 pour le Slave.
    Chaque CPU ayant son propre cache, on lance un programme par CPU.
@@ -12,11 +12,12 @@
    (costs.c), preuve que le code SH2 dessine juste.
    ========================================================================= */
 
-#include "compose.h"
 #include "framebuffer.h"
+#include "project.h"
+#include "race.h"
+#include "render.h"
 #include "vdp.h"
 
-#include "demo_assets.h"
 #include "frames.h"
 
 #ifndef BENCH_FIRST_LINE
@@ -29,15 +30,17 @@ volatile uint8_t bench_fb[VDP_DRAM_SIZE] __attribute__((section(".fb")));
 
 void sys_write(const char *text, int length);
 
-/* Décalage d'écran choisi pour chaque ligne (voir compose.h) */
+/* Description et décalage d'écran de chaque ligne, comme dans race.c */
+static RoadLine lines[BENCH_SCREEN_HEIGHT];
 static uint8_t lineShift[BENCH_SCREEN_HEIGHT];
 
-static void drawFrame(const BenchFrame *f) {
-    ComposeCost cost; /* non rempli : compteurs absents sur SH2 */
+static void drawFrame(const View *v) {
+    const RaceContent *c = &race_content;
+    project_lines(c->track, v, lines, BENCH_SCREEN_HEIGHT, BENCH_FIRST_LINE, 2,
+                  0);
     for (int y = BENCH_FIRST_LINE; y < BENCH_SCREEN_HEIGHT; y += 2)
-        lineShift[y] = (uint8_t)compose_line(
-            fb_offset(0, y), &asset_tiles, &asset_plane_a, f->xA, f->yA + y,
-            &asset_plane_b, f->xB, f->yB + y, &cost);
+        lineShift[y] = (uint8_t)render_line(fb_offset(0, y), &lines[y], c->sky,
+                                            v->skyX, y, 0);
 }
 
 /* Empreinte de ce que l'écran affiche : 320 pixels par ligne, à partir
@@ -60,14 +63,16 @@ static void printHex(uint32_t v) {
 }
 
 int main(void) {
+    const Track *t = race_content.track;
+
     /* Une image hors mesure, pour remplir le cache comme en régime établi */
-    BenchFrame warm = bench_frame(0);
+    View warm = bench_frame(t, 0);
     drawFrame(&warm);
 
     for (int i = 0; i < BENCH_FRAMES; i++) {
-        const BenchFrame f = bench_frame(i);
+        const View v = bench_frame(t, i);
         bench_marker[0] = 1; /* début de la mesure */
-        drawFrame(&f);
+        drawFrame(&v);
         bench_marker[1] = 1; /* fin */
         printHex(fingerprint());
     }

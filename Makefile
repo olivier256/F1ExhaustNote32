@@ -12,16 +12,16 @@ rebuild: clean all
 
 # La démo, dans une fenêtre
 run: all
-	./build/supervdp
+	./build/f1en32
 
 # La même, avec les compteurs (toutes les 5 secondes, sur le terminal)
 stats: all
-	VDP_STATS=1 ./build/supervdp
+	VDP_STATS=1 ./build/f1en32
 
 # Sans fenêtre : 5 secondes, capture de la dernière image
 headless: all
-	./build/supervdp_headless --frames 300 --pad 10-200:R --shot 299:build/capture.ppm
+	./build/f1en32_headless --frames 300 --shot 299:build/capture.ppm
 
-# Tous les tests (environ 25 secondes)
+# Tous les tests (environ 10 secondes)
 test:
 	tests/run_tests.sh

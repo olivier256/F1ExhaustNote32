@@ -1,15 +1,17 @@
-# SuperVDP
+# F1 Exhaust Note 32
 
-Moteur de tiles pour la Sega 32X : deux plans de tiles 16 × 16
-superposés, qui défilent indépendamment. Le plan A est devant (index 0
-transparent), le plan B derrière. La 32X se conduit comme un VDP pour le
-68000 : le 68000 écrit les défilements dans les registres COMM, les deux
-SH2 dessinent.
+Moteur de course pseudo-3D pour la Sega 32X, dans l'esprit d'Out Run,
+Super Hang-On ou F1 Exhaust Note : une route dessinée ligne par ligne,
+avec virages et côtes, sous un décor de fond qui défile. La 32X se
+conduit comme un VDP spécialisé pour le 68000 : le 68000 fait avancer la
+voiture et écrit sa position dans les registres COMM, les deux SH2
+dessinent.
 
-Le développement se fait sur Mac avec **pixel**, un simulateur de 32X
-sans 68000 (C, MiniFB, deux threads Master et Slave, VBlank à 60 Hz,
-API qui imite les registres : `vdp_dram`, `vdp_palette`, FBCR, `comm[]`).
-pixel vient du projet AMB96.
+Le projet fait suite à SuperVDP (deux plans de tiles 16 × 16) et en
+garde le simulateur **pixel** (C, MiniFB, deux threads Master et Slave,
+VBlank à 60 Hz, H_INT, API qui imite les registres : `vdp_dram`,
+`vdp_palette`, FBCR, SFT, `comm[]`), les règles d'écriture dans le frame
+buffer et le banc de mesure SH2.
 
 ## Compiler et lancer
 
@@ -17,172 +19,151 @@ pixel vient du projet AMB96.
 git submodule update --init   # MiniFB, pour la fenêtre (voir ci-dessous)
 make run                      # compile et lance la démo
 make stats                    # la même, avec VDP_STATS=1
-make test                     # tous les tests (environ 25 s)
+make test                     # tous les tests (environ 10 s)
 ```
 
-À la création du dépôt, MiniFB s'ajoute une fois pour toutes par
-`git submodule add https://github.com/emoon/minifb.git minifb`.
 Sans MiniFB, seules les cibles sans fenêtre sont construites
-(`supervdp_headless`, `test_compose`). Sous Linux, MiniFB demande les
-en-têtes X11 ; `-DMINIFB_USE_OPENGL_API=OFF` évite OpenGL.
+(`f1en32_headless`, `test_race`). Sous Linux, MiniFB demande les en-têtes
+X11 ; `-DMINIFB_USE_OPENGL_API=OFF` évite OpenGL.
 
-Dans VS Code : ouvrir `SuperVDP.code-workspace` ; tâches « Compiler »,
-« Lancer la démo », « Lancer la démo avec VDP_STATS », « Tests ».
+Dans VS Code : ouvrir `F1ExhaustNote32.code-workspace` ; tâches
+« Compiler », « Lancer la démo », « Lancer la démo avec VDP_STATS »,
+« Tests ».
 
 ## La démo
 
-Décor de Chun-Li (Street Fighter Alpha) : la Muraille et le sol (plan A,
-768 × 224, ciel transparent) devant les montagnes (plan B, 672 × 224).
+Un circuit d'un peu plus de 1 000 segments (`demo/track.txt`) : ligne
+droite, virages larges et serrés, enchaînement en S, crête suivie d'une
+descente en courbe, montagnes russes, épingle. La voiture accélère seule
+et se place à l'intérieur des virages qui arrivent.
 
-| Manette   | Clavier | Effet                                 |
-|-----------|---------|---------------------------------------|
-| Gauche / Droite | flèches | déplace la vue                  |
-| C maintenu | L      | 4 pixels par image au lieu de 1       |
+| Manette          | Clavier  | Effet                                   |
+|------------------|----------|-----------------------------------------|
+| Gauche / Droite  | flèches  | écarte la voiture (le script la ramène) |
+| B maintenu       | K        | frein                                   |
+| Start maintenu   | Entrée   | pause                                   |
 
-Parallaxe : les deux plans arrivent ensemble au bout. xA va de 0 à
-448 (768 − 320), xB de 0 à 352 (672 − 320) : xB = xA × 11 / 14, arrondi.
-C'est le programme 68000 (`demo/md68k.c`, en C dans le simulateur) qui
-le calcule et écrit les registres.
+Il n'y a pas encore de sprites : ni la voiture, ni les adversaires, ni le
+décor du bord de la route.
 
 ## Registres COMM
 
-| COMM | Sens            | Rôle                                   |
-|------|-----------------|----------------------------------------|
-| 1    | Master → Slave  | numéro de l'image à dessiner           |
-| 2    | Slave → Master  | dernière image terminée                |
-| 4    | 68000 → SH2     | défilement horizontal du plan A        |
-| 5    | 68000 → SH2     | défilement horizontal du plan B        |
-| 6    | 68000 → SH2     | défilement vertical du plan A          |
-| 7    | 68000 → SH2     | défilement vertical du plan B          |
+| COMM | Sens            | Rôle                                         |
+|------|-----------------|----------------------------------------------|
+| 1    | Master → Slave  | numéro de l'image à dessiner                 |
+| 2    | Slave → Master  | dernière image terminée                      |
+| 4, 5 | 68000 → SH2     | distance de la caméra sur le circuit (32 bits) |
+| 6    | 68000 → SH2     | écart latéral de la voiture (signé)          |
+| 7    | 68000 → SH2     | défilement horizontal du décor de fond       |
 
 Le Master relève les registres 4 à 7 une fois par image (deux lectures
-identiques de suite : le manuel prévient qu'un registre lu pendant que
-l'autre côté l'écrit donne une valeur indéfinie), puis publie la scène
-pour le Slave. Les deux CPU dessinent donc avec les mêmes valeurs.
+identiques de suite), puis publie la scène pour le Slave. Le circuit
+lui-même est une donnée constante (en ROM sur la console), lue par le
+68000 comme par les SH2.
 
 ## Le moteur
 
-`supervdp/compose.c` compose chaque ligne **par segments**, sans tampon :
-on parcourt la ligne du plan A tile par tile ; bmp2c a donné la classe
-de chaque ligne de tile (transparente, opaque, mixte). Transparente : on
-copie le plan B. Opaque : on copie le plan A, et B n'est pas lu. Mixte :
-on fusionne pixel par pixel. Sur la démo, 95 % des lignes de tile de A
-sont entièrement transparentes ou entièrement opaques. bmp2c prépare
-aussi, pour chaque ligne de pixels d'un plan, les colonnes de tile où la
-classe change (un bit par colonne) : les segments d'une ligne se forment
-en ne regardant que ces changements.
+**Le monde** (`race/world.h`). Le circuit est une suite de segments de
+256 unités, chacun avec sa hauteur et sa courbure. `tools/track2c` les
+calcule à la compilation depuis `demo/track.txt` (méthode de Jake
+Gordon : la courbure monte, tient, redescend ; le dénivelé est réparti en
+cosinus). La caméra est à 640 unités au-dessus de la route, 720 unités
+derrière la voiture, sans inclinaison : l'horizon reste sur la ligne 96.
 
-Règles d'écriture, reprises d'AMB96 :
-- uniquement des écritures 16 bits, à des adresses paires : chaque mot
-  de la ligne est écrit une seule fois, soit **35 840 à 36 064
-  écritures par image** (160 mots par ligne, 161 avec décalage d'écran),
-  quels que soient les défilements (le surdessin, B puis A par la zone
-  overwrite, en aurait coûté 53 000 à 58 000) ;
-- source impaire : lecture par mots alignés, chaque mot écrit réunit
-  deux octets de deux mots lus (`MOV.L` et décalages pour une tile
-  entière) ; la décision de parité est prise une fois par ligne et par
-  plan ;
-- tiles 16 × 16 alignées sur 16 octets : une ligne de tile = une ligne
-  du cache SH2 ;
-- Master et Slave composent une ligne sur deux.
+**La projection** (`race/project.c`). On projette le début de chacun des
+160 segments devant la caméra, du plus proche au plus lointain (une
+division par point : FOCAL / z). Un segment couvre les lignes d'écran
+entre la projection de son début et celle de sa fin ; centre et
+demi-largeur de la route y sont interpolés linéairement. Une ligne déjà
+couverte par un segment plus proche le reste : c'est ce qui cache la
+route derrière une crête. Les virages font glisser la route sur le côté :
+la somme des courbures, sommée deux fois.
 
-**Décalage d'écran (SFT) ligne par ligne.** Une source impaire coûte
-cher (pixels réassemblés). Le VDP peut décaler l'affichage d'un point
-(registre SFT, 2000 4102h), mais pour toute la ligne : les deux plans
-changent de parité ensemble. `compose_line` choisit donc, pour chaque
-ligne, de la dessiner décalée ou non, de façon à rendre pair le plan qui
-fournit le plus de mots (en haut de l'écran, B ; sur le sol, A). Une
-ligne décalée fait 161 mots (le frame buffer prévoit 161 mots par
-ligne). Chaque CPU range le décalage de ses lignes dans une table, une
-par frame buffer ; pendant l'affichage, le **Master** écrit SFT ligne par
-ligne : sa routine V_INT pour la ligne 0, sa routine H_INT (au HBlank de
-chaque ligne) pour la ligne suivante. C'est le Master parce qu'il a la
-priorité sur le bus.
+Chaque ligne d'écran est ainsi décrite **une seule fois** : soit la route
+(centre, demi-largeur, bandes claires ou sombres), soit le décor.
 
-**Code et cache.** Le moteur suppose le cache du SH2 en mode « 2 voies
-+ RAM » : le code chaud de `compose.c` dans les 2 Ko de RAM interne, son
-code froid (le mot de frontière, fusionné pixel par pixel) en SDRAM.
+**Le dessin** (`race/render.c`). Chaque mot de la ligne est écrit une
+fois, en 16 bits : 160 écritures par ligne, **35 840 par image** (46,7 %
+du plafond de 76 800), quel que soit le paysage.
+- Route : neuf plages de couleur unie (herbe, bordure, bitume, ligne,
+  bitume, ligne, bitume, bordure, herbe) ; un mot à cheval sur deux
+  plages réunit leurs couleurs. Les couleurs de la route ont des index
+  réservés (240 et au-delà), écrits à l'initialisation.
+- Décor : la ligne y d'une image de 512 pixels de large qui boucle,
+  copiée par mots. Une colonne de départ impaire est copiée depuis la
+  colonne paire précédente et affichée décalée d'un point (registre SFT,
+  écrit ligne par ligne par le Master en H_INT, comme dans SuperVDP) :
+  161 mots. Sous le décor (au-delà d'une crête), on prolonge sa couleur
+  de sol.
 
-**Assembleur SH2.** Compilé pour le SH2 avec `SUPERVDP_ASM=1`, le moteur
-fusionne A et B par `supervdp/merge_sh2.S` (même interface que la
-version C, `mergeSpan`, qui reste la référence et la version de l'hôte ;
-vérifié contre elle par `tools/sh2cycles/test_merge.c`). Code en RAM
-interne : 1 904 octets avec l'assembleur, 2 036 sans. Voir `tools/sh2cycles`.
+**Le partage du travail** (`race/race.c`). Chaque CPU projette lui-même
+le circuit pour ses seules lignes (paires pour le Master, impaires pour
+le Slave), et obtient exactement les valeurs d'une projection de tout
+l'écran : aucun n'attend l'autre ni ne lit ce que l'autre a calculé.
+
+**La division.** Le SH2 n'en a pas d'instruction : toutes passent par
+`div_u32` (`race/fixed.h`), une par point projeté et une par segment
+dessiné, soit environ 160 + 40 par image et par CPU. Elle appelle libgcc
+pour l'instant ; l'unité DIVU du SH7604 la remplacera si le banc le
+justifie.
 
 ## Mesurer : `VDP_STATS=1`
 
-Toutes les 5 secondes dans la fenêtre, et à chaque capture sans fenêtre :
+Comme dans SuperVDP : toutes les 5 secondes dans la fenêtre, et à chaque
+capture sans fenêtre, les écritures dans le frame buffer (comptées
+exactement), les cycles du bus du VDP, et les cycles CPU **estimés** par
+le modèle de coûts du moteur (`race/cost.h`), étalonné par le banc
+`tools/sh2cycles` (le vrai code compilé pour SH2, exécuté sous qemu avec
+un modèle de temps du SH2). La dernière ligne donne la durée de l'image
+en images de 1/60 s : au-delà de 1, on ne tient pas 60 images/s.
 
-```
-acces bus par image : master 17970 | slave 17970 | total 35940 = 46.8 % du plafond 76800
-cycles bus VDP (partages) : 35940 ecritures x 5 = 179700 / 384000 (46.8 %)
-cycles CPU estimes (modele du jeu + ecritures 3..5 c) : master 203414 + ecritures = 257174..293014 / 384000 ...
-```
-
-- **Écritures** : comptées exactement par le simulateur (toutes passent
-  par `vdp_dram_write16`).
-- **Cycles bus VDP** : d'après le *32X Hardware Manual*, le VDP vide
-  environ un mot toutes les 5 cycles, pour les deux CPU ensemble ; une
-  image dure environ 384 000 cycles SH2 (23,01 MHz), d'où le plafond de
-  76 800 écritures.
-- **Cycles CPU** : le simulateur exécute du code natif et ne mesure pas
-  le temps SH2. Le moteur compte ce qu'il fait et le multiplie par des
-  coûts unitaires (`supervdp/cost.h`) ; le simulateur ajoute 3 à 5 cycles
-  par écriture du CPU. Les coûts unitaires sont **étalonnés** par le banc
-  `tools/sh2cycles` : le vrai code compilé pour SH2, exécuté sous qemu
-  avec un modèle de temps du SH2 (voir `tools/sh2cycles/README.md`).
-  C'est un modèle, pas une 32X réelle, mais le nombre d'instructions est
-  exact.
-- **Verdict** : la dernière ligne donne la durée de l'image en images de
-  1/60 s (le CPU le plus lent, ou le bus du VDP). Au-delà de 1, on ne
-  tient pas 60 images/s.
+La fenêtre tourne toujours à 60 images/s sur l'hôte : seules les
+statistiques disent ce que ferait la vraie machine.
 
 ## Vérifier
 
 `tests/run_tests.sh` (ou `make test`) :
-1. `test_compose` : `compose_line` contre un rendu naïf pixel par pixel,
-   sur la trajectoire de la démo, toutes les colonnes de départ de A
-   contre 40 valeurs de B, et 300 000 lignes au hasard ; 160 écritures
-   16 bits par ligne, chaque mot écrit une fois.
-2. Le simulateur complet sans fenêtre : la manette suit un scénario, et
-   l'image capturée doit être identique, octet pour octet, à l'image de
-   référence.
+1. `test_race` : `render_line` contre un rendu naïf pixel par pixel, sur
+   200 000 lignes de route au hasard (dont hors de l'écran) et toutes les
+   colonnes de départ du décor ; 160 ou 161 écritures par ligne, chaque
+   mot écrit une fois. Puis 5 000 images (plus d'un tour de la démo, et
+   des vues au hasard) : la projection de chaque CPU (une ligne sur deux)
+   doit donner exactement celle de tout l'écran, l'image des deux CPU être
+   identique au rendu naïf, et la route toujours visible en bas de
+   l'écran.
+2. Le simulateur complet sans fenêtre : la manette suit un scénario qui
+   met la démo en pause avant chaque capture, et l'image capturée doit
+   être identique, octet pour octet, à celle que `test_race` calcule pour
+   le même scénario (le programme 68000 rejoué image par image).
 
-## Les images
+## Les données
 
-BMP 8 bits indexés, palette commune, index 0 = transparent, convertis en
-C par `tools/bmp2c` à chaque compilation (manifeste
-`demo/assets/assets.txt`). Largeur et hauteur : des multiples de 16. Les
-BMP de la démo sont produits depuis `demo/assets/source/chunli_stage.png`
-par `tools/chunli2bmp.py` (Pillow) : plan A calé en bas (27 lignes
-transparentes au-dessus), 41 couleurs, 599 tiles.
+- Le décor : `demo/assets/sky.bmp`, 512 × 112, produit par
+  `tools/sky.py` (Pillow ; une image originale, calculée), converti en C
+  par `tools/bmp2c` (type `bitmap`). Index 240 et au-delà réservés à la
+  route.
+- Le circuit : `demo/track.txt`, converti par `tools/track2c`.
 
 ## Organisation
 
-| Dossier / fichier         | Rôle                                                    |
-|---------------------------|---------------------------------------------------------|
-| `pixel/`                  | simulateur 32X : VDP, interface (COMM, V_INT), plates-formes fenêtre et sans fenêtre |
-| `supervdp/supervdp.c`     | boucles Master et Slave, relevé des registres, échange de frame buffer |
-| `supervdp/compose.c`      | composition d'une ligne par segments                    |
-| `supervdp/cost.h`         | modèle de coûts (cycles estimés)                        |
-| `supervdp/assets_types.h` | tiles, plans, classes de lignes de tile                 |
-| `supervdp/shared.h`       | registres COMM, scène partagée, accès sans cache        |
-| `demo/`                   | contenu de la démo et programme 68000                   |
-| `tools/bmp2c.c`           | convertisseur BMP → C                                   |
-| `tests/`                  | tests                                                   |
-| `tools/sh2cycles/`        | banc SH2 sous qemu : temps du code compilé, étalonnage de `cost.h` |
-
-## Vers une vraie 32X
-
-- 599 tiles de 256 octets = 150 Ko, en SDRAM (256 Ko en tout) : depuis
-  la ROM, un chargement de cache coûterait bien plus cher.
-- `vdp_dram_write16()` devient une écriture directe en 2400 0000h +
-  offset ; `SHARED()` donne déjà l'adresse cache-through sur SH2.
-- `tools/sh2cycles/build-tools.sh` construit la chaîne `sh-elf` (gcc
-  13.2) qui servira aussi pour la console ; le temps reste à recouper
-  sur un émulateur 32X.
+| Dossier / fichier       | Rôle                                                    |
+|-------------------------|---------------------------------------------------------|
+| `pixel/`                | simulateur 32X : VDP, interface (COMM, V_INT, H_INT), plates-formes |
+| `race/race.c`           | boucles Master et Slave, relevé des registres, interruptions, échange de frame buffer |
+| `race/world.h`          | circuit, caméra, constantes de projection              |
+| `race/project.c`        | projection : description de chaque ligne d'écran       |
+| `race/render.c`         | dessin d'une ligne (route ou décor)                    |
+| `race/cost.h`           | modèle de coûts (cycles estimés)                       |
+| `race/shared.h`         | registres COMM, scène partagée, accès sans cache       |
+| `demo/`                 | circuit, décor et programme 68000 de la démo           |
+| `tools/bmp2c.c`         | convertisseur BMP → C                                  |
+| `tools/track2c.c`       | convertisseur circuit → C                              |
+| `tools/sky.py`          | fabrique le décor de la démo                           |
+| `tests/`                | tests                                                  |
+| `tools/sh2cycles/`      | banc SH2 sous qemu : temps du code compilé, étalonnage de `cost.h` |
 
 ## Licence
 
-SuperVDP est publié sous licence MIT. Copyright © 2026 Olivier BROSSERON.
-Si vous utilisez SuperVDP, merci de citer le projet et son auteur.
+F1 Exhaust Note 32 est publié sous licence MIT. Copyright © 2026 Olivier
+BROSSERON. Si vous utilisez ce projet, merci de citer le projet et son
+auteur.

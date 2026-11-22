@@ -1,0 +1,34 @@
+# Circuit de la démo, converti par tools/track2c (voir son en-tête).
+#
+#     ENTREE TENUE SORTIE : segments (256 unités chacun)
+#     COURBE : 2 doux, 4 moyen, 6 serré ; positive vers la droite
+#     DENIVELE : en unités du monde (la caméra est à 640 au-dessus de la
+#     route) ; la somme doit être nulle, le circuit boucle.
+#
+#      entrée tenue sortie courbe dénivelé
+
+# Ligne droite des stands
+road     0     50     0      0       0
+# Premier virage, à droite, large
+road    20     40    20      2       0
+# Montée vers une crête...
+road    30     40    30      0    3000
+# ... et gauche serrée dans la descente
+road    20     30    20     -5   -3000
+road     0     40     0      0       0
+# Enchaînement de virages (S)
+road    15     20    15      4       0
+road    15     20    15     -4       0
+road    15     20    15      4       0
+# Ligne droite en montagnes russes
+road    25      0    25      0    2000
+road    25      0    25      0   -2000
+road    25      0    25      0    1500
+road    25      0    25      0   -1500
+# Épingle à droite
+road    20     60    20      6       0
+# Descente en courbe à gauche
+road    30     30    30     -3   -2500
+# Remontée vers la ligne d'arrivée
+road    40     40    40      0    2500
+road     0     62     0      0       0

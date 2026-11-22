@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Banc sh2cycles : relie le temps mesuré sur le code SH2 (greffon qemu) aux
-compteurs du modèle de coûts (supervdp/cost.h), et en déduit les coûts
+compteurs du modèle de coûts (race/cost.h), et en déduit les coûts
 unitaires par moindres carrés.
 
     python3 fit.py DOSSIER
@@ -11,21 +11,24 @@ DOSSIER contient, pour CPU = master et slave :
     cycles_CPU.txt  temps mesurés (greffon : lignes « sh2cycles;... »)
     prints_CPU.txt  empreintes des images dessinées par le code SH2
 
-Chaque ligne d'écran écrit exactement 160 mots : le coût d'un mot copié
-depuis une source paire ne se distingue pas du coût fixe d'une ligne. Il
-est donc compté dans CYCLES_LINE, et les autres coûts par mot sont des
-surcoûts par rapport à lui (CYCLES_WORD_EVEN = 0).
+Chaque ligne d'écran écrit 160 mots (161 décalée) : la boucle des mots
+est dans le coût d'une ligne. Le coût fixe d'une image (CYCLES_FRAME :
+projection des points, et les 112 lignes comptées comme lignes de décor)
+est le terme constant de l'ajustement ; CYCLES_ROAD_LINE est le surcoût
+d'une ligne de route.
 """
 
 import sys
 import numpy as np
 
-FIELDS = ["lines", "aTiles", "runs", "tileChunks", "wordsEven", "wordsOdd",
-          "wordsMerged"]
-# Coefficients ajustés, et la constante de cost.h correspondante
-FITTED = [("lines", "CYCLES_LINE"), ("aTiles", "CYCLES_A_TILE"),
-          ("runs", "CYCLES_RUN"), ("tileChunks", "CYCLES_TILE_CHUNK"),
-          ("wordsOdd", "CYCLES_WORD_ODD"), ("wordsMerged", "CYCLES_WORD_MERGED")]
+FIELDS = ["segments", "roadLines", "skyLines", "runs", "skyChunks"]
+# Coefficients ajustés, et la constante de cost.h correspondante ; "frame"
+# vaut 1 pour chaque image (terme constant)
+# (skyLines n'y est pas : roadLines + skyLines vaut toujours 112, le coût
+# d'une ligne de décor est dans le terme constant, voir race/cost.h)
+FITTED = [("frame", "CYCLES_FRAME"), ("segments", "CYCLES_SEGMENT"),
+          ("roadLines", "CYCLES_ROAD_LINE"), ("runs", "CYCLES_RUN"),
+          ("skyChunks", "CYCLES_SKY_CHUNK")]
 
 FB_WRITES_PER_CPU = 17920
 FRAME_CYCLES = 384000
@@ -35,10 +38,11 @@ def load(folder, cpu):
     costs = []
     for line in open("%s/costs_%s.csv" % (folder, cpu)):
         p = line.strip().split(";")
-        row = dict(zip(FIELDS, map(int, p[1:8])))
-        row["model"] = int(p[8])
-        row["print"] = p[9]
-        row["shifted"] = int(p[10]) if len(p) > 10 else 0
+        row = dict(zip(FIELDS, map(int, p[1:6])))
+        row["frame"] = 1
+        row["model"] = int(p[6])
+        row["print"] = p[7]
+        row["shifted"] = int(p[8])
         costs.append(row)
     measured = []
     for line in open("%s/cycles_%s.txt" % (folder, cpu)):
@@ -107,8 +111,8 @@ def main():
     names = [f for f, _ in FITTED]
     A = np.array([[r[f] for f in names] for r in rows], dtype=float)
     # Moindres carrés à coûts positifs ou nuls : certains compteurs varient
-    # presque ensemble (112 lignes par CPU et par image, une vingtaine de
-    # tiles par ligne), et l'ajustement libre peut donner un coût négatif.
+    # presque ensemble (112 lignes par CPU et par image, route + décor),
+    # et l'ajustement libre peut donner un coût négatif.
     # Un coût négatif est fixé à 0 et l'on ajuste à nouveau les autres.
     active = list(range(len(names)))
     while True:

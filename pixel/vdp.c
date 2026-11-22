@@ -1,4 +1,5 @@
 #include "vdp.h"
+#include "bigendian.h"
 #include "platform.h"
 
 #include <stdio.h>
@@ -371,8 +372,11 @@ void vdp_render_line(int line, uint32_t *rgb) {
            SFT, l'affichage est décalé d'un point : le pixel x est l'octet
            x + 1. Le registre est lu ici, au moment où la ligne est
            balayée : sa valeur est celle écrite avant cette ligne. */
+        /* La table de lignes est faite de mots du SH2 (gros-boutistes),
+           écrits par vdp_dram_write16 comme le reste. */
+        const uint16_t lineAddress = BE16(displayFrameBuffer[line]);
         const uint8_t *pixels = (const uint8_t *)displayFrameBuffer +
-                                displayFrameBuffer[line] * 2 +
+                                (uint32_t)lineAddress * 2 +
                                 (*screenShiftRegister & SCREEN_SHIFT_SFT);
         for (int col = 0; col < VDP_SCREEN_WIDTH; col++)
             rgb[col] = get_palette_color(pixels[col]);

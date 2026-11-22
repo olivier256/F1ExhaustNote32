@@ -11,10 +11,10 @@
    Types des données graphiques, telles que les produit tools/bmp2c.
 
    Tous les pixels sont des index de palette sur 8 bits (mode Packed Pixel
-   du VDP 32X). L'index 0 est transparent dans le plan A : c'est du
-   logiciel, sans rapport avec le bit 15 des couleurs de la palette
-   (« through bit », priorité par rapport à l'écran Mega Drive), qui reste
-   à 0.
+   du VDP 32X). L'index 0 est réservé à la transparence (plans de tiles,
+   sprites) : c'est du logiciel, sans rapport avec le bit 15 des couleurs
+   de la palette (« through bit », priorité par rapport à l'écran Mega
+   Drive), qui reste à 0.
    ========================================================================= */
 
 /* Les tiles sont carrées, de 16 x 16 pixels : une ligne de tile fait
@@ -82,13 +82,14 @@ typedef struct {
     uint16_t changeBytes;        /* octets par ligne, CHANGE_BYTES() */
 } Tilemap;
 
-/* Sprite : width x height pixels, ligne par ligne (pas encore utilisé
-   par le moteur ; bmp2c sait déjà les convertir) */
+/* Image brute (« bitmap » ou « sprite » dans le manifeste de bmp2c) :
+   width x height pixels, ligne par ligne, alignés sur 4 octets. Le décor
+   de fond en est une ; les sprites mis à l'échelle en seront aussi. */
 typedef struct {
     uint16_t width;
     uint16_t height;
     const uint8_t *pixels;
-} Sprite;
+} Bitmap;
 
 /* Classe de la ligne 'row' de la tile 'tile' */
 static inline int tile_row_class(const Tileset *tiles, unsigned tile, int row) {

@@ -1,19 +1,17 @@
 #!/bin/sh
 # =========================================================================
-# Banc sh2cycles : mesure le temps de compose_line compilé pour SH2, et
-# étalonne le modèle de coûts du simulateur (supervdp/cost.h).
+# Banc sh2cycles : mesure le temps du moteur (race/project.c et
+# race/render.c) compilé pour SH2, et étalonne le modèle de coûts du
+# simulateur (race/cost.h).
 #
-# 1. Compile supervdp/compose.c pour SH2 (sh-elf-gcc -m2, -O2, sans les
+# 1. Compile le moteur pour SH2 (sh-elf-gcc -m2, -O2, sans les
 #    compteurs), avec le banc bench.c, aux adresses de la 32X.
 # 2. L'exécute sous qemu-sh4eb avec le greffon sh2cycles, qui applique le
 #    modèle de temps du SH2 (cycles par instruction, branchements,
 #    dépendances, cache et SDRAM). Un programme par CPU.
-#    Cache : par défaut en mode « 2 voies + RAM », le code de compose.c
-#    dans la RAM interne (bench_ram.ld), comme le moteur le suppose.
-#    CACHE=4 : cache en 4 voies, tout en SDRAM (bench.ld), pour comparer.
-#    Assembleur : par défaut, compose.c est compilé avec SUPERVDP_ASM=1
-#    (fusion par merge_sh2.S), comme sur la console ; test_merge vérifie
-#    d'abord l'assembleur contre le C. ASM=0 : tout en C, pour comparer.
+#    Cache : par défaut en mode « 2 voies + RAM », le code du dessin des
+#    lignes (render.c) dans la RAM interne (bench_ram.ld). CACHE=4 : cache en 4 voies, tout en
+#    SDRAM (bench.ld), pour comparer.
 # 3. Calcule sur l'hôte les compteurs du modèle pour les mêmes images,
 #    vérifie que le code SH2 dessine les mêmes pixels, et ajuste les
 #    coûts unitaires (fit.py).
@@ -48,15 +46,18 @@ OUT=build/sh2cycles
 T=tools/sh2cycles
 mkdir -p "$OUT"
 
-# Images de la démo, converties par bmp2c compilé pour l'hôte
-cc -std=c99 -O2 -Isupervdp -o "$OUT/bmp2c" tools/bmp2c.c
+# Données de la démo (images, circuit), converties par les outils de l'hôte
+cc -std=c99 -O2 -Irace -o "$OUT/bmp2c" tools/bmp2c.c
+cc -std=c99 -O2 -Irace -o "$OUT/track2c" tools/track2c.c -lm
 "$OUT/bmp2c" demo/assets/assets.txt "$OUT/demo_assets" 2>/dev/null
+"$OUT/track2c" demo/track.txt "$OUT/demo_track" demo_track 2>/dev/null
 
-INC="-Ipixel -Isupervdp -I$T -I$OUT"
+INC="-Ipixel -Irace -I$T -I$OUT"
+ENGINE="race/project.c race/render.c"
+DATA="$OUT/demo_assets.c $OUT/demo_track.c demo/content.c"
 
 # ---- Hôte : compteurs du modèle -------------------------------------------
-cc -std=c99 -O2 -Wall $INC -o "$OUT/costs" $T/costs.c supervdp/compose.c \
-  "$OUT/demo_assets.c"
+cc -std=c99 -O2 -Wall $INC -o "$OUT/costs" $T/costs.c $ENGINE $DATA
 "$OUT/costs" 0 >"$OUT/costs_master.csv"
 "$OUT/costs" 1 >"$OUT/costs_slave.csv"
 
@@ -71,23 +72,19 @@ else
   # pour le greffon.
   LDSCRIPT="-T $T/bench_ram.ld -Wl,--defsym,RAM_BASE=0x50000000"
   PLUGIN_OPTIONS=",ways=2,ram=0x50000000"
-  echo "Cache : 2 voies (2 Ko) + RAM interne (2 Ko) avec le code de compose.c"
+  echo "Cache : 2 voies (2 Ko) + RAM interne (2 Ko) avec le code de render.c"
 fi
 
 CFLAGS="-m2 -mb -O2 -std=c99 -ffreestanding -fno-builtin -Wall $INC"
-"${SH_ELF}gcc" $CFLAGS -c "$OUT/demo_assets.c" -o "$OUT/assets.o"
+OBJECTS="$OUT/start.o $OUT/project.o $OUT/render.o $OUT/data.o"
 "${SH_ELF}gcc" -m2 -mb -Wa,--isa=sh2 -c $T/start.S -o "$OUT/start.o"
-ASM_OBJECTS=""
-if [ "${ASM:-1}" = 1 ]; then
-  CFLAGS="$CFLAGS -DSUPERVDP_ASM=1"
-  "${SH_ELF}gcc" -m2 -mb -Wa,--isa=sh2 $INC -c supervdp/merge_sh2.S \
-    -o "$OUT/merge_sh2.o"
-  ASM_OBJECTS="$OUT/merge_sh2.o"
-  echo "Assembleur SH2 : fusion par merge_sh2.S (ASM=0 pour tout en C)"
-else
-  echo "Tout en C (sans SUPERVDP_ASM)"
-fi
-"${SH_ELF}gcc" $CFLAGS -c supervdp/compose.c -o "$OUT/compose.o"
+"${SH_ELF}gcc" $CFLAGS -c race/project.c -o "$OUT/project.o"
+"${SH_ELF}gcc" $CFLAGS -c race/render.c -o "$OUT/render.o"
+for f in $DATA; do
+  "${SH_ELF}gcc" $CFLAGS -c "$f" -o "$OUT/$(basename "$f" .c).o"
+done
+"${SH_ELF}ld" -r -o "$OUT/data.o" "$OUT/demo_assets.o" "$OUT/demo_track.o" \
+  "$OUT/content.o"
 for cpu in master slave; do
   first=0
   [ $cpu = slave ] && first=1
@@ -97,12 +94,11 @@ for cpu in master slave; do
   # en mémoire page par page.
   "${SH_ELF}gcc" -m2 -mb -nostdlib $LDSCRIPT -Wl,-z,max-page-size=0x1000 \
     -Wl,--no-warn-rwx-segments -o "$OUT/bench_$cpu.elf" \
-    "$OUT/start.o" "$OUT/bench_$cpu.o" "$OUT/compose.o" $ASM_OBJECTS \
-    "$OUT/assets.o" -lgcc
+    "$OUT/bench_$cpu.o" $OBJECTS -lgcc
 done
 
-# Taille en SDRAM (256 Ko sur 32X) : code + données + tiles + pile ; et
-# code en RAM interne (2 Ko au plus, vérifié par bench_ram.ld)
+# Taille en SDRAM (256 Ko sur 32X) : code + données + pile ; et code en
+# RAM interne (2 Ko au plus, vérifié par bench_ram.ld)
 "${SH_ELF}size" -A "$OUT/bench_master.elf" | awk '
   $1 ~ /^\.(text|rodata|data|bss|stack)$/ { n += $2 }
   $1 == ".ram" { ram = $2 }
@@ -112,19 +108,6 @@ done
 # ---- Greffon qemu -----------------------------------------------------------
 cc -O2 -shared -fPIC -Wall -I"$QEMU_INCLUDE" $(pkg-config --cflags glib-2.0) \
   -o "$OUT/libsh2cycles.so" $T/sh2cycles_plugin.c
-
-# ---- Assembleur contre C (sans le greffon : seul le résultat compte) -------
-if [ -n "$ASM_OBJECTS" ]; then
-  "${SH_ELF}gcc" $CFLAGS -c $T/test_merge.c -o "$OUT/test_merge.o"
-  "${SH_ELF}gcc" -m2 -mb -nostdlib -T $T/bench_ram.ld \
-    -Wl,--defsym,RAM_BASE=0x50000000 -Wl,-z,max-page-size=0x1000 \
-    -Wl,--no-warn-rwx-segments -o "$OUT/test_merge.elf" "$OUT/start.o" \
-    "$OUT/test_merge.o" $ASM_OBJECTS "$OUT/assets.o" -lgcc
-  if ! "$QEMU" "$OUT/test_merge.elf"; then
-    echo "test_merge : l'assembleur ne donne pas le resultat du C"
-    exit 1
-  fi
-fi
 
 # ---- Mesure -----------------------------------------------------------------
 for cpu in master slave; do

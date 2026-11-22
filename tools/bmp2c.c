@@ -1,6 +1,6 @@
 /* =========================================================================
    bmp2c : convertit des images BMP 8 bits indexées en données C pour le
-   moteur SuperVDP (voir supervdp/assets_types.h).
+   moteur (voir race/assets_types.h).
 
    Usage : bmp2c MANIFESTE SORTIE
      Produit SORTIE.h et SORTIE.c.
@@ -9,17 +9,21 @@
        # commentaire
        plane   plane_a    plane_a.bmp
        sprite  hero       hero.bmp
+       bitmap  background background.bmp
    Les chemins sont relatifs au manifeste. Chaque ligne produit une
-   variable 'asset_<nom>' (Tilemap pour un plan, Sprite pour un sprite).
+   variable 'asset_<nom>' (Tilemap pour un plan, Bitmap pour un sprite
+   ou une image brute).
 
    - Plan : l'image entière du niveau. Elle est découpée en tiles de
-     TILE_SIZE x TILE_SIZE pixels (16 x 16, voir supervdp/assets_types.h) ;
+     TILE_SIZE x TILE_SIZE pixels (16 x 16, voir race/assets_types.h) ;
      les tiles identiques ne sont gardées qu'une fois, et tous les plans
      partagent le même jeu de tiles (asset_tiles, 65 535 au plus).
      Largeur et hauteur : des multiples de TILE_SIZE, sans autre
      contrainte. Pour chaque tile, bmp2c donne aussi la classe de chacune
      de ses lignes : transparente, opaque ou mixte (index 0 = transparent).
    - Sprite : l'image telle quelle ; l'index 0 est transparent.
+   - Bitmap : l'image telle quelle, sans transparence (un décor de fond,
+     par exemple). Même type C que le sprite.
    - Palette (asset_palette) : celle de la première image, convertie au
      format 32X. Toutes les images doivent donner la même couleur aux
      index qu'elles utilisent.
@@ -190,10 +194,10 @@ static void readManifest(const char *path) {
         Asset *a = &assets[assetCount++];
         if (strcmp(kind, "plane") == 0)
             a->kind = KIND_PLANE;
-        else if (strcmp(kind, "sprite") == 0)
+        else if (strcmp(kind, "sprite") == 0 || strcmp(kind, "bitmap") == 0)
             a->kind = KIND_SPRITE;
         else
-            fail("type inconnu '%s' (plane ou sprite)", kind);
+            fail("type inconnu '%s' (plane, sprite ou bitmap)", kind);
         snprintf(a->name, sizeof a->name, "%s", name);
         if (snprintf(a->path, sizeof a->path, "%s%s", dir, file) >=
             (int)sizeof a->path)
@@ -324,7 +328,7 @@ static void writeWords(FILE *f, const uint16_t *p, size_t n) {
 
 static void writeOutput(const char *base, const char *manifest) {
     char path[MAX_PATH];
-    const char *guard = "SUPERVDP_ASSETS_H";
+    const char *guard = "DEMO_ASSETS_H";
 
     /* En-tête */
     snprintf(path, sizeof path, "%s.h", base);
@@ -339,7 +343,7 @@ static void writeOutput(const char *base, const char *manifest) {
     fprintf(h, "extern const Tileset asset_tiles;\n\n");
     for (int i = 0; i < assetCount; i++)
         fprintf(h, "extern const %s asset_%s;\n",
-                assets[i].kind == KIND_PLANE ? "Tilemap" : "Sprite",
+                assets[i].kind == KIND_PLANE ? "Tilemap" : "Bitmap",
                 assets[i].name);
     fprintf(h, "\n#endif\n");
     fclose(h);
@@ -441,7 +445,7 @@ static void writeOutput(const char *base, const char *manifest) {
                     "    __attribute__((aligned(4))) = {",
                     a->path, a->name, w, hh);
             writeBytes(c, a->image.pixels, (size_t)w * hh);
-            fprintf(c, "};\n\nconst Sprite asset_%s = {%d, %d, %s_pixels};\n\n",
+            fprintf(c, "};\n\nconst Bitmap asset_%s = {%d, %d, %s_pixels};\n\n",
                     a->name, w, hh, a->name);
         }
     }

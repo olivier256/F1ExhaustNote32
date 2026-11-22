@@ -710,3 +710,121 @@ ratés pouvait devenir négatif).
 Par CPU et par image, hors écritures FB, avec l'assembleur : 248 000
 cycles en moyenne, 277 000 au pire (259 000 et 290 000 avant).
 ```
+
+---
+
+F1 Exhaust Note 32, première version : la route de référence
+
+**Ce que fait cette version** :
+- Nouveau projet, sur la base de SuperVDP : moteur de course pseudo-3D
+  (route ligne par ligne, virages, côtes, décor de fond qui défile).
+  On garde le simulateur `pixel/`, la synchronisation Master / Slave, le
+  décalage d'écran SFT ligne par ligne (Master, en V_INT et H_INT),
+  `bmp2c` et le banc `tools/sh2cycles`. `supervdp/` (composition de deux
+  plans de tiles, assembleur de fusion) et la démo de Chun-Li sont
+  retirés ; `metriques.md` aussi (il commentait les chiffres de
+  SuperVDP).
+- Moteur `race/` :
+  - `world.h` : le circuit (segments de 256 unités : hauteur, courbure,
+    bandes claires ou sombres) et la caméra (640 unités au-dessus de la
+    route, 720 derrière la voiture, focale 128, horizon sur la ligne 96) ;
+  - `project.c` : projection à la Jake Gordon. Les 160 débuts de segment
+    devant la caméra sont projetés une fois chacun (une division) ;
+    chaque segment couvre les lignes entre ses deux bords, centre et
+    demi-largeur interpolés ; une ligne déjà couverte par un segment plus
+    proche le reste (crêtes). Chaque ligne d'écran est décrite une fois :
+    route ou décor. Chaque CPU projette pour ses seules lignes, et obtient
+    exactement les valeurs d'une projection de tout l'écran (additions
+    exactes depuis la première ligne du segment) ;
+  - `render.c` : chaque mot écrit une fois, en 16 bits. Route : neuf
+    plages de couleur unie (herbe, bordure, bitume, deux lignes,
+    bordure, herbe). Décor : une ligne de l'image de fond (512 pixels de
+    large, qui boucle) copiée par mots ; colonne impaire : copie depuis
+    la colonne paire précédente et ligne affichée décalée (SFT), 161
+    mots. Sous le décor, sa couleur de sol. **35 840 à 36 064 écritures
+    par image**, comme SuperVDP ;
+  - `fixed.h` : toutes les divisions passent par `div_u32` (libgcc pour
+    l'instant, DIVU plus tard si besoin) ; produits 32 × 32 -> 64 bits.
+- Registres COMM : 4 et 5, la distance de la caméra (32 bits) ; 6,
+  l'écart latéral ; 7, le défilement du décor. Le Master les relève
+  (deux lectures identiques) et publie la scène.
+- Démo : `demo/track.txt`, 1 062 segments (droite, virages larges et
+  serrés, S, crête et descente en courbe, montagnes russes, épingle),
+  converti par le nouvel outil `tools/track2c` (méthode addRoad de Jake
+  Gordon). Décor original `demo/assets/sky.bmp` (512 × 112), produit par
+  `tools/sky.py`. Programme 68000 : accélération jusqu'à 192 unités par
+  image, voiture qui se place à l'intérieur des virages à venir, décor
+  qui tourne avec la route ; Gauche / Droite, B (frein), Start (pause).
+- `bmp2c` : type `bitmap` (image brute, comme `sprite`) ; le type C
+  `Sprite` devient `Bitmap`.
+- Simulateur : la table de lignes est écrite par `vdp_dram_write16`
+  (mots du SH2), et relue ainsi par `vdp_render_line` ; plus d'écriture
+  directe par `vdp_dram`. Prépare une table de lignes réécrite à chaque
+  image.
+- `cost.h` étalonné par le banc. Chaque CPU dessine toujours 112 lignes
+  et projette 160 points : ces coûts fixes sont réunis dans
+  `CYCLES_FRAME` (l'ajustement ne peut pas les séparer).
+- Vérifié :
+  - `test_race` : 232 768 lignes (200 000 lignes de route au hasard, dont
+    hors de l'écran, et toutes les colonnes de départ du décor) identiques
+    au rendu naïf, 160 ou 161 écritures par ligne, chaque mot écrit une
+    fois ; 5 016 images (plus d'un tour de la démo, et 3 000 vues au
+    hasard, dont la fin du circuit) : projection par CPU identique à
+    celle de tout l'écran, image identique au rendu naïf, route toujours
+    présente en bas ;
+  - simulateur complet : 3 captures (départ ; premier virage, décor à une
+    colonne impaire, donc lignes décalées ; descente après la crête),
+    identiques octet pour octet à la référence ;
+  - banc SH2 : pixels identiques à l'hôte (empreintes), 17 920 + lignes
+    décalées écritures par CPU.
+
+**Mesures** (banc, par CPU et par image, hors écritures FB) :
+
+| Cache                           | Moyenne | Pire cas | Pire + écritures à 3 c | à 5 c         |
+|---------------------------------|---------|----------|------------------------|---------------|
+| 2 voies + RAM (render.c en RAM) | 222 799 | 238 421  | 292 328 (76 %)         | 328 266 (85 %) |
+| 4 voies, tout en SDRAM          | 218 495 | 230 110  | 283 870 (74 %)         | 319 713 (83 %) |
+
+- Profil (instructions, 155 000 par image) : `render_line` 71 %, dont
+  46 % pour les deux boucles des mots (4 instructions par mot, copie
+  comme remplissage) ; projection 19 % ; division (`__udivsi3`) 7 %
+  pour environ 200 divisions ; décalages arithmétiques de libgcc 1 %.
+- Défauts de cache : environ 2 300 par image (27 000 cycles), surtout
+  les lignes du décor (20 lignes de cache par ligne copiée).
+- Le mode 2 voies + RAM n'apporte rien ici (+2 %) : le code chaud est
+  petit, les données (décor, circuit) profitent des 4 Ko de cache.
+- `render.c` fait 912 octets ; avec `project.c` (1 240), le moteur
+  dépasse les 2 Ko de RAM interne.
+- Simulateur (écritures à 3 cycles) : 0,72 à 0,75 image de 1/60 s. On
+  tient 60 images/s, avec environ 15 % de marge au pire (écritures à
+  5 cycles), avant les sprites.
+
+**Ce qui reste pour plus tard** :
+- les sprites mis à l'échelle (voiture, adversaires, décor du bord de la
+  route) : c'est là que se jouera le budget ;
+- le bus du VDP : 35 840 écritures, c'est 179 200 cycles de vidage
+  partagés par les deux CPU. Ni le simulateur ni le banc ne modélisent
+  le FIFO plein quand les deux CPU écrivent en même temps : le chiffre à
+  5 cycles est le plus réaliste. Réduire les écritures (table de lignes)
+  comptera plus que réduire les instructions ;
+- pistes mesurables contre cette référence : boucles des mots déroulées,
+  DIVU, décalages non signés dans la projection, table de lignes pour
+  les lignes sans sprite.
+
+Message de commit proposé :
+
+```
+F1 Exhaust Note 32 : moteur de course pseudo-3D, route de référence
+
+Nouveau projet sur la base de SuperVDP. race/ remplace supervdp/ :
+projection du circuit à la Jake Gordon (une description par ligne
+d'écran, crêtes comprises), dessin de chaque ligne en plages de couleur
+(route) ou copie d'un décor qui boucle (SFT pour les colonnes impaires),
+35 840 écritures par image. Circuit converti par tools/track2c, décor
+fabriqué par tools/sky.py, programme 68000 à trajectoire scriptée.
+
+Simulateur : table de lignes écrite et relue en mots du SH2.
+Tests : rendu naïf, projection par CPU, simulateur complet en pause.
+Banc SH2 adapté ; cost.h étalonné : 223 000 cycles par CPU et par
+image en moyenne, 238 000 au pire, hors écritures FB.
+```

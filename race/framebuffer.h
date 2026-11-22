@@ -25,8 +25,7 @@ void fb_init_line_table(int screenHeight);
 
 /* Toutes les écritures du moteur dans le frame buffer passent par
    vdp_dram_write*() ou vdp_overwrite_write*(), pour être comptées par le
-   simulateur (voir vdp.h). Seule exception : la table de lignes, à
-   l'initialisation (voir framebuffer.c). */
+   simulateur (voir vdp.h), table de lignes comprise. */
 
 /* Position du pixel (x, y) en octets depuis le début du frame buffer de
    dessin : c'est l'offset attendu par vdp_dram_write*() et

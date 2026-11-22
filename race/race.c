@@ -1,16 +1,16 @@
 /* =========================================================================
-   SuperVDP : boucles des deux SH2.
+   Moteur de course : boucles des deux SH2.
 
    Déroulement d'une image :
 
      68000 (VBlank)  Master                       Slave
      --------------  ------                       -----
      COMM 4-7 =      relève COMM 4-7 (scène)
-     défilements     publie la scène,
-                     COMM_FRAME = n          -->  lit la scène
-                     compose les lignes           compose les lignes
-                     paires (et leur              impaires (et leur
-                     décalage)                    décalage)
+     position,       publie la scène,
+     écart, décor    COMM_FRAME = n          -->  lit la scène
+                     projette le circuit          projette le circuit
+                     (ses lignes) et dessine      (ses lignes) et dessine
+                     les lignes paires            les lignes impaires
                      attend                  <--  COMM_SLAVE_DONE = n
                      COMM_SLAVE_DONE = n
                      demande l'échange de
@@ -21,29 +21,30 @@
    Le Slave ne commence jamais avant l'échange : il attend le COMM_FRAME
    suivant, que le Master n'écrit qu'une fois l'échange fait.
 
-   Pourquoi une ligne sur deux plutôt qu'une moitié d'écran chacun : le
-   coût d'une ligne dépend de son contenu (ciel transparent, sol opaque,
-   lignes mixtes). En s'entrelaçant, les deux CPU ont presque le même
-   travail, et chacun possède entièrement ses lignes.
+   Chaque CPU projette lui-même le circuit, pour ses seules lignes : la
+   projection est bon marché (quelques centaines de points), et ainsi
+   aucun CPU n'attend l'autre au milieu de l'image ni ne lit ce que
+   l'autre a calculé. Une ligne sur deux plutôt qu'une moitié d'écran
+   chacun : le haut (décor) et le bas (route) ne coûtent pas pareil.
 
-   Décalage d'écran (SFT) ligne par ligne : compose_line choisit pour
-   chaque ligne de la dessiner décalée d'un point ou non (voir compose.h),
-   et chaque CPU range ce choix dans la table du frame buffer qu'il
-   dessine. Pendant l'affichage, c'est le Master qui écrit SFT, ligne par
-   ligne, depuis la table du frame buffer affiché : sa routine V_INT prend
-   la table et écrit SFT pour la ligne 0 ; sa routine H_INT, au HBlank de
-   chaque ligne, l'écrit pour la ligne suivante. C'est le Master parce
-   qu'il a la priorité sur le bus : comme l'échange de frame buffer, SFT
-   ne peut pas attendre que le Slave ait fini un accès.
+   Décalage d'écran (SFT) ligne par ligne, comme dans SuperVDP : une ligne
+   de décor dont la colonne de départ est impaire est copiée depuis la
+   colonne paire précédente et affichée décalée d'un point. Chaque CPU
+   range le décalage de ses lignes dans la table du frame buffer qu'il
+   dessine ; pendant l'affichage, le Master écrit SFT ligne par ligne
+   depuis la table du frame buffer affiché : sa routine V_INT pour la
+   ligne 0, sa routine H_INT (au HBlank de chaque ligne) pour la suivante.
+   C'est le Master parce qu'il a la priorité sur le bus.
    ========================================================================= */
 
-#include "supervdp.h"
-#include "compose.h"
+#include "race.h"
 #include "cost.h"
 #include "framebuffer.h"
 #include "game.h"
 #include "interface.h"
 #include "platform.h"
+#include "project.h"
+#include "render.h"
 #include "shared.h"
 #include "vdp.h"
 
@@ -56,13 +57,17 @@ static Scene sharedScene;
 #define MAX_LINES 240
 static uint8_t lineShift[2][MAX_LINES];
 
+/* Description des lignes, une table par CPU (chacun n'y lit et n'y écrit
+   que ses lignes) */
+static RoadLine roadLines[PLATFORM_CPU_COUNT][MAX_LINES];
+
 /* État des interruptions du Master */
 static int screenLines;                    /* lignes affichées */
 static volatile const uint8_t *shownShift; /* table du frame buffer affiché */
 static volatile int nextShiftLine;         /* ligne dont H_INT écrit SFT */
 
 static void initVDP(int screenHeight);
-static Scene readScrollRegisters(void);
+static Scene readCommRegisters(void);
 static void drawScene(const Scene *scene, int cpu, int screenHeight);
 static int flipFrameBuffer(void);
 
@@ -116,7 +121,7 @@ void master_main(void) {
         if (++frame == 0) /* 0 veut dire « pas encore d'image » */
             frame = 1;
 
-        Scene scene = readScrollRegisters();
+        Scene scene = readCommRegisters();
         scene.drawBuffer = (vdp_read_fbcr() & FBCR_FS) ? 0 : 1;
 
         /* Publier la scène, puis lancer le Slave */
@@ -171,68 +176,75 @@ static void initVDP(int screenHeight) {
     fb_init_line_table(screenHeight);
 
     for (int i = 0; i < PALETTE_COLORS; i++)
-        vdp_palette[i] = supervdp_content.palette[i];
+        vdp_palette[i] = race_content.palette[i];
+    for (int i = 0; i < ROAD_COLOR_COUNT; i++)
+        vdp_palette[ROAD_COLOR_FIRST + i] = road_palette[i];
 
     /* Mode Packed Pixel */
     *bitmapModeRegister = (*bitmapModeRegister & 0xFFFC) | 0x0001;
 }
 
-/* ---- Registres de défilement ---------------------------------------------
+/* ---- Registres COMM -------------------------------------------------------
    Le 68000 peut les écrire à tout moment. D'après le manuel, un registre
    COMM lu pendant que l'autre côté l'écrit donne une valeur indéfinie, et
    le 68000 peut n'avoir écrit qu'une partie des quatre. On relit donc les
    quatre registres jusqu'à obtenir deux lectures identiques de suite. */
 
-static Scene readOnce(void) {
-    Scene s = {0};
-    s.hScrollA = (int16_t)comm[COMM_HSCROLL_A];
-    s.hScrollB = (int16_t)comm[COMM_HSCROLL_B];
-    s.vScrollA = (int16_t)comm[COMM_VSCROLL_A];
-    s.vScrollB = (int16_t)comm[COMM_VSCROLL_B];
-    return s;
+static View readOnce(void) {
+    View v;
+    v.position = (uint32_t)comm[COMM_POSITION_HI] << 16 |
+                 (uint32_t)comm[COMM_POSITION_LO];
+    v.playerX = (int16_t)comm[COMM_PLAYER_X];
+    v.skyX = comm[COMM_SKY_X];
+    return v;
 }
 
-static int sameScene(const Scene *a, const Scene *b) {
-    return a->hScrollA == b->hScrollA && a->hScrollB == b->hScrollB &&
-           a->vScrollA == b->vScrollA && a->vScrollB == b->vScrollB;
+static int sameView(const View *a, const View *b) {
+    return a->position == b->position && a->playerX == b->playerX &&
+           a->skyX == b->skyX;
 }
 
-static Scene readScrollRegisters(void) {
-    Scene previous = readOnce();
+static Scene readCommRegisters(void) {
+    View previous = readOnce();
     for (;;) {
-        const Scene current = readOnce();
-        if (sameScene(&previous, &current))
-            return current;
+        const View current = readOnce();
+        if (sameView(&previous, &current)) {
+            Scene s = {current, 0};
+            return s;
+        }
         previous = current;
     }
 }
 
 /* ---- Dessin ------------------------------------------------------------- */
 
-/* La ligne y de l'écran montre la ligne (vScroll + y) de chaque plan */
 static void drawScene(const Scene *scene, int cpu, int screenHeight) {
-    const SuperVdpContent *c = &supervdp_content;
-    ComposeCost cost = {0};
+    const RaceContent *c = &race_content;
+    ProjectCost projectCost = {0};
+    RenderCost renderCost = {0};
 
+    const int height = screenHeight < MAX_LINES ? screenHeight : MAX_LINES;
+    RoadLine *lines = roadLines[cpu];
     uint8_t *const shifts = SHARED(&lineShift[scene->drawBuffer][0]);
 
-    /* Master : lignes paires, Slave : impaires. Chaque ligne donne son
-       décalage d'écran, rangé pour les interruptions du Master. */
-    for (int y = cpu; y < screenHeight && y < MAX_LINES;
-         y += PLATFORM_CPU_COUNT)
-        shifts[y] = (uint8_t)compose_line(fb_offset(0, y), c->tiles, c->planeA,
-                                          scene->hScrollA, scene->vScrollA + y,
-                                          c->planeB, scene->hScrollB,
-                                          scene->vScrollB + y, &cost);
+    /* Master : lignes paires, Slave : impaires */
+    project_lines(c->track, &scene->view, lines, height, cpu,
+                  PLATFORM_CPU_COUNT, &projectCost);
+    for (int y = cpu; y < height; y += PLATFORM_CPU_COUNT)
+        shifts[y] = (uint8_t)render_line(fb_offset(0, y), &lines[y], c->sky,
+                                         scene->view.skyX, y, &renderCost);
 
-#if SUPERVDP_COST_ENABLED && !defined(__sh__)
+#if RACE_COST_ENABLED && !defined(__sh__)
     /* Outil du simulateur : estimation déclarée pour cette image. Le
        Master paie en plus ses interruptions (une H_INT par ligne et une
        V_INT), estimées. */
-    uint32_t cycles = cost_cycles(&cost);
+    uint32_t cycles = cost_cycles(&projectCost, &renderCost);
     if (cpu == PLATFORM_CPU_MASTER)
         cycles += (uint32_t)(screenHeight + 1) * CYCLES_INTERRUPT;
     vdp_count_cpu_cycles(cycles);
+#else
+    (void)projectCost;
+    (void)renderCost;
 #endif
 }
 
