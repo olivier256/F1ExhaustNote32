@@ -11,26 +11,24 @@ DOSSIER contient, pour CPU = master et slave :
     cycles_CPU.txt  temps mesurés (greffon : lignes « sh2cycles;... »)
     prints_CPU.txt  empreintes des images dessinées par le code SH2
 
-Chaque ligne d'écran écrit 160 mots (161 décalée) : la boucle des mots
-est dans le coût d'une ligne. Le coût fixe d'une image (CYCLES_FRAME :
-projection des points, et les 112 lignes comptées comme lignes de décor)
-est le terme constant de l'ajustement ; CYCLES_ROAD_LINE est le surcoût
-d'une ligne de route.
+Chaque ligne d'écran écrit un mot, son entrée de la table de lignes. Le
+coût fixe d'une image (CYCLES_FRAME : projection des points, et les 112
+lignes comptées comme lignes de ciel) est le terme constant de
+l'ajustement ; CYCLES_ROAD_LINE est le surcoût d'une ligne de route.
 """
 
 import sys
 import numpy as np
 
-FIELDS = ["segments", "roadLines", "skyLines", "runs", "skyChunks"]
+FIELDS = ["segments", "roadLines", "skyLines"]
 # Coefficients ajustés, et la constante de cost.h correspondante ; "frame"
 # vaut 1 pour chaque image (terme constant)
 # (skyLines n'y est pas : roadLines + skyLines vaut toujours 112, le coût
-# d'une ligne de décor est dans le terme constant, voir race/cost.h)
+# d'une ligne de ciel est dans le terme constant, voir race/cost.h)
 FITTED = [("frame", "CYCLES_FRAME"), ("segments", "CYCLES_SEGMENT"),
-          ("roadLines", "CYCLES_ROAD_LINE"), ("runs", "CYCLES_RUN"),
-          ("skyChunks", "CYCLES_SKY_CHUNK")]
+          ("roadLines", "CYCLES_ROAD_LINE")]
 
-FB_WRITES_PER_CPU = 17920
+FB_WRITES_PER_CPU = 112  # une entrée de la table de lignes par ligne
 FRAME_CYCLES = 384000
 
 
@@ -38,11 +36,10 @@ def load(folder, cpu):
     costs = []
     for line in open("%s/costs_%s.csv" % (folder, cpu)):
         p = line.strip().split(";")
-        row = dict(zip(FIELDS, map(int, p[1:6])))
+        row = dict(zip(FIELDS, map(int, p[1:4])))
         row["frame"] = 1
-        row["model"] = int(p[6])
-        row["print"] = p[7]
-        row["shifted"] = int(p[8])
+        row["model"] = int(p[4])
+        row["print"] = p[5]
         costs.append(row)
     measured = []
     for line in open("%s/cycles_%s.txt" % (folder, cpu)):
@@ -57,11 +54,10 @@ def load(folder, cpu):
                  % (cpu, len(costs), len(measured), len(prints)))
     bad = [i for i in range(len(costs)) if costs[i]["print"] != prints[i]]
     if bad:
-        sys.exit("%s : le code SH2 ne dessine pas comme l'hote (images %s)"
+        sys.exit("%s : le code SH2 n'affiche pas comme l'hote (images %s)"
                  % (cpu, bad[:10]))
-    # 160 mots par ligne, 161 pour une ligne décalée (SFT)
     for i, m in enumerate(measured):
-        expected = FB_WRITES_PER_CPU + costs[i]["shifted"]
+        expected = FB_WRITES_PER_CPU
         if m["fb"] != expected:
             sys.exit("%s : image %d, %d ecritures FB au lieu de %d"
                      % (cpu, i, m["fb"], expected))
@@ -73,11 +69,9 @@ def main():
     rows, ys = [], []
     for cpu in ("master", "slave"):
         costs, measured = load(folder, cpu)
-        shifted = sum(c["shifted"] for c in costs) / len(costs)
-        print("%s : %d images, empreintes identiques a l'hote, %d a %d ecritures "
-              "FB par image (160 ou 161 par ligne ; %.0f lignes decalees en "
-              "moyenne)" % (cpu, len(costs), FB_WRITES_PER_CPU,
-                            FB_WRITES_PER_CPU + 112, shifted))
+        print("%s : %d images, empreintes identiques a l'hote, %d ecritures "
+              "FB par image (la table de lignes)"
+              % (cpu, len(costs), FB_WRITES_PER_CPU))
         for c, m in zip(costs, measured):
             rows.append(c)
             ys.append(m)
@@ -111,7 +105,7 @@ def main():
     names = [f for f, _ in FITTED]
     A = np.array([[r[f] for f in names] for r in rows], dtype=float)
     # Moindres carrés à coûts positifs ou nuls : certains compteurs varient
-    # presque ensemble (112 lignes par CPU et par image, route + décor),
+    # presque ensemble (112 lignes par CPU et par image, route + ciel),
     # et l'ajustement libre peut donner un coût négatif.
     # Un coût négatif est fixé à 0 et l'on ajuste à nouveau les autres.
     active = list(range(len(names)))

@@ -8,8 +8,7 @@
 
    Le simulateur exécute le moteur en code natif : il ne mesure pas le
    temps SH2. Le moteur compte donc ce qu'il fait (segments dessinés,
-   lignes de route, plages de couleur, morceaux de décor copiés) et
-   multiplie par un coût unitaire en cycles. Le résultat est
+   lignes de route) et multiplie par un coût unitaire en cycles. Le résultat est
    déclaré au simulateur (vdp_count_cpu_cycles), qui ajoute lui-même le
    coût des écritures dans le frame buffer (3 cycles, 5 si le FIFO est
    plein) et l'affiche avec VDP_STATS=1.
@@ -40,44 +39,38 @@ typedef struct {
                           division, l'interpolation) */
 } ProjectCost;
 
-/* Dessin (render.c), par CPU. Les mots écrits ne sont pas comptés ici :
-   chaque ligne en écrit 160 (161 décalée), et le simulateur compte les
-   écritures. Leur boucle est dans le coût de la ligne. */
+/* Choix des lignes (render.c), par CPU : une écriture par ligne, dans la
+   table de lignes, comptée par le simulateur. */
 typedef struct {
     uint32_t roadLines; /* lignes de route */
-    uint32_t skyLines;  /* lignes de décor (ou de sol, sous le décor) */
-    uint32_t runs;      /* plages de couleur non vides (route, sol) */
-    uint32_t skyChunks; /* morceaux de ligne de décor copiés (1 ou 2) */
+    uint32_t skyLines;  /* lignes de ciel ou de sol */
 } RenderCost;
 
 /* Coûts unitaires, en cycles SH2, hors écritures dans le frame buffer.
-   Étalonnés par tools/sh2cycles (moindres carrés sur 360 images, à -4 % /
-   +4 % près), code compilé en C, cache en 2 voies + RAM, render.c en RAM
-   interne.
+   Étalonnés par tools/sh2cycles (moindres carrés sur 360 images, à -2 % /
+   +2 % près), code compilé en C, cache en 2 voies + RAM, code de chaque
+   image (project.c, render_line) en RAM interne.
 
-   Chaque CPU dessine toujours 112 lignes, route ou décor : la somme
-   roadLines + skyLines ne varie pas, et les 160 points projetés non plus.
-   L'ajustement ne peut donc pas séparer ces coûts fixes : CYCLES_FRAME
-   réunit la projection des points et le coût d'une ligne de décor (la
-   copie de ses 160 mots) pour les 112 lignes ; CYCLES_ROAD_LINE est le
-   surcoût d'une ligne de route par rapport à une ligne de décor. Le
-   profil du banc donne la vraie répartition (voir VERSION.md). */
-#define CYCLES_FRAME 180061  /* par image et par CPU */
-#define CYCLES_SEGMENT 398   /* segment dessiné : division, pentes */
-#define CYCLES_ROAD_LINE 263 /* surcoût d'une ligne de route */
-#define CYCLES_RUN 17        /* plage de couleur non vide */
-#define CYCLES_SKY_CHUNK 36  /* morceau de décor (le second : bouclage) */
+   Chaque CPU traite toujours 112 lignes, route ou ciel, et projette 160
+   points : l'ajustement ne peut pas séparer ces coûts fixes.
+   CYCLES_FRAME réunit la projection des points et le coût d'une ligne de
+   ciel pour les 112 lignes ; CYCLES_ROAD_LINE est le surcoût d'une ligne
+   de route (description, choix de la largeur, du décalage). */
+#define CYCLES_FRAME 50824  /* par image et par CPU */
+#define CYCLES_SEGMENT 398  /* segment dessiné : division, pentes */
+#define CYCLES_ROAD_LINE 21 /* surcoût d'une ligne de route */
 
 /* Interruptions du Master, par image : une H_INT par ligne affichée (elle
-   écrit le décalage d'écran de la ligne suivante) et une V_INT. Entrée
-   dans l'exception, routine, RTE : ESTIMATION, non mesurée par le banc
-   (qui ne simule pas les interruptions). */
+   écrit le décalage d'écran de la ligne suivante, et quatre couleurs
+   quand la bande change) et une V_INT. Entrée dans l'exception, routine,
+   RTE : ESTIMATION, non mesurée par le banc (qui ne simule pas les
+   interruptions). */
 #define CYCLES_INTERRUPT 40
+#define CYCLES_PALETTE_SWAP 20 /* les quatre couleurs, en plus */
 
 static inline uint32_t cost_cycles(const ProjectCost *p, const RenderCost *r) {
     return CYCLES_FRAME + p->segments * CYCLES_SEGMENT +
-           r->roadLines * CYCLES_ROAD_LINE + r->runs * CYCLES_RUN +
-           r->skyChunks * CYCLES_SKY_CHUNK;
+           r->roadLines * CYCLES_ROAD_LINE;
 }
 
 #endif

@@ -11,8 +11,7 @@
 
    Pour chaque ligne d'écran, soit la route (centre et demi-largeur, en
    pixels 16.16, et la couleur des bandes du segment qu'elle montre), soit
-   le décor de fond (rien ne la couvre : ciel, montagnes, ou sol au-delà
-   d'une crête).
+   le ciel (rien ne la couvre : le ciel, ou le sol au-delà d'une crête).
 
    Méthode (celle de Jake Gordon, « How to build a racing game ») : on
    projette le début de chacun des DRAW_DISTANCE segments devant la
@@ -28,7 +27,6 @@
 typedef struct {
     uint32_t position; /* distance de la caméra le long du circuit */
     int16_t playerX;   /* écart latéral de la voiture (et de la caméra) */
-    uint16_t skyX;     /* défilement horizontal du décor de fond */
 } View;
 
 enum { LINE_SKY = 0, LINE_ROAD = 1 };

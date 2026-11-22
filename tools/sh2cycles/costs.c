@@ -1,12 +1,11 @@
 /* =========================================================================
    Banc sh2cycles, côté hôte : pour chaque image de frames.h et les lignes
    d'un CPU, les compteurs du modèle de coûts (race/cost.h) et l'empreinte
-   des lignes dessinées.
+   de ce que le VDP afficherait (voir bench.c).
 
    Usage : costs PREMIERE_LIGNE      (0 = Master, 1 = Slave)
    Sortie (stdout), une ligne par image :
-     image;segments;roadLines;skyLines;runs;skyChunks;modele;empreinte;
-     lignes_decalees
+     image;segments;roadLines;skyLines;modele;empreinte
    ========================================================================= */
 
 #include "framebuffer.h"
@@ -34,29 +33,34 @@ int main(int argc, char *argv[]) {
     }
     const int first = atoi(argv[1]);
     const RaceContent *c = &race_content;
+    static RoadLayout layout;
     static RoadLine lines[BENCH_SCREEN_HEIGHT];
+
+    render_layout(&layout);
+    if (!render_prepare(&layout))
+        return 1;
 
     for (int i = 0; i < BENCH_FRAMES; i++) {
         const View v = bench_frame(c->track, i);
         ProjectCost p = {0};
         RenderCost r = {0};
-        int shift[BENCH_SCREEN_HEIGHT] = {0}, shifted = 0;
+        unsigned attributes[BENCH_SCREEN_HEIGHT] = {0};
         project_lines(c->track, &v, lines, BENCH_SCREEN_HEIGHT, first, 2, &p);
+        for (int y = first; y < BENCH_SCREEN_HEIGHT; y += 2)
+            attributes[y] = render_line(y, &lines[y], &layout, &r);
+
+        /* Empreinte de ce que le VDP afficherait (voir bench.c) */
+        uint32_t h = 2166136261u;
         for (int y = first; y < BENCH_SCREEN_HEIGHT; y += 2) {
-            shift[y] =
-                render_line(fb_offset(0, y), &lines[y], c->sky, v.skyX, y, &r);
-            shifted += shift[y];
+            const uint32_t word = (uint32_t)fb[2 * y] << 8 | fb[2 * y + 1];
+            const uint32_t start = word * 2 + (attributes[y] & LINE_SFT);
+            for (int x = 0; x < FB_WIDTH; x++)
+                h = (h ^ fb[start + x]) * 16777619u;
+            h = (h ^ (attributes[y] & LINE_DARK)) * 16777619u;
         }
 
-        /* Empreinte de ce que l'écran affiche (voir bench.c) */
-        uint32_t h = 2166136261u;
-        for (int y = first; y < BENCH_SCREEN_HEIGHT; y += 2)
-            for (int x = 0; x < FB_WIDTH; x++)
-                h = (h ^ fb[fb_offset(x + shift[y], y)]) * 16777619u;
-
-        printf("%d;%u;%u;%u;%u;%u;%u;%08x;%d\n", i, p.segments, r.roadLines,
-               r.skyLines, r.runs, r.skyChunks, cost_cycles(&p, &r), h,
-               shifted);
+        printf("%d;%u;%u;%u;%u;%08x\n", i, p.segments, r.roadLines, r.skyLines,
+               cost_cycles(&p, &r), h);
     }
     return 0;
 }

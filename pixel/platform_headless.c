@@ -78,8 +78,14 @@ static int64_t nowNs(void) {
    l'ait acquittée, en cédant le processeur, au plus HINT_WAIT_NS. Au-delà,
    la H_INT reste en attente et sera comptée en retard au HBlank suivant :
    c'est alors une vraie faute du jeu (interruptions masquées, routine trop
-   longue). */
-#define HINT_WAIT_NS 50000 /* 50 µs, moins d'une ligne (63,5 µs) */
+   longue).
+   Sans fenêtre, on attend jusqu'à 2 ms : les captures servent de
+   références au pixel près, et une H_INT servie trop tard décale les
+   couleurs de la route ou SFT de toutes les lignes suivantes de l'image.
+   Sur une machine virtuelle, la livraison d'un signal dépasse parfois
+   50 µs. La synchro vidéo rattrape ensuite son retard (elle vise l'heure
+   de chaque ligne, pas un intervalle). */
+#define HINT_WAIT_NS 2000000 /* 2 ms */
 
 static void waitHintServed(void) {
     const int64_t limit = nowNs() + HINT_WAIT_NS;

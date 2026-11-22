@@ -27,8 +27,7 @@
 #define COMM_POSITION_HI 4 /* distance de la caméra, 16 bits de poids fort */
 #define COMM_POSITION_LO 5 /* 16 bits de poids faible */
 #define COMM_PLAYER_X 6    /* écart latéral de la voiture, signé */
-#define COMM_SKY_X 7       /* défilement du décor de fond */
-/* COMM 0 et 3 : libres (les adversaires, plus tard) */
+/* COMM 0, 3 et 7 : libres (les adversaires, plus tard) */
 
 /* ---- Scène ---------------------------------------------------------------
    Tout ce qu'il faut pour dessiner une image : les deux CPU dessinent avec

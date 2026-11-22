@@ -1,7 +1,0 @@
-# Images converties par tools/bmp2c (voir l'en-tête de bmp2c.c).
-# type    nom         fichier
-# La palette est celle de la première image.
-# sky.bmp est produit par tools/sky.py (python3 tools/sky.py
-# demo/assets/sky.bmp) ; index 240 et au-delà réservés à la route.
-
-bitmap    sky         sky.bmp

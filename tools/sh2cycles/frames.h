@@ -6,8 +6,8 @@
    SH2 (bench.c, temps mesuré) et pour le programme hôte (costs.c,
    compteurs du modèle). Reproductible : pas de hasard, un générateur fixe.
    Les positions parcourent tout le circuit de la démo (virages, crêtes,
-   descentes, et le passage de la fin au début) ; l'écart latéral et le
-   défilement du décor (pair ou impair) varient d'une image à l'autre.
+   descentes, et le passage de la fin au début) ; l'écart latéral varie
+   d'une image à l'autre.
    ========================================================================= */
 
 #include "project.h"
@@ -28,7 +28,6 @@ static inline View bench_frame(const Track *t, int i) {
     if (v.position >= track_length(t))
         v.position -= track_length(t);
     v.playerX = (int16_t)((int)(s >> 8) % 1201 - 600);
-    v.skyX = (uint16_t)(s >> 16);
     return v;
 }
 

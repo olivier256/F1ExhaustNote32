@@ -828,3 +828,102 @@ Tests : rendu naïf, projection par CPU, simulateur complet en pause.
 Banc SH2 adapté ; cost.h étalonné : 223 000 cycles par CPU et par
 image en moyenne, 238 000 au pire, hors écritures FB.
 ```
+
+---
+
+La route par la table de lignes : le VDP dessine
+
+**Ce que fait cette version** :
+- Les pixels ne sont plus dessinés à chaque image. Au démarrage, le
+  Master écrit dans chacun des deux frame buffers toutes les lignes dont
+  l'écran peut avoir besoin (`render_prepare`) :
+  - 128 routes, de demi-largeur w_k = 1,2 × k pixels (sur une route
+    plate, la demi-largeur grandit de 1,2 pixel par ligne d'écran),
+    séparées par 320 pixels d'herbe : une fenêtre de 320 pixels autour
+    d'une route ne voit jamais la suivante, quel que soit le décalage ;
+  - 12 lignes de ciel unies (dégradé, une par bande de 8 lignes) et une
+    ligne de sol, pour ce qu'on voit au-delà d'une crête ;
+  - 67 890 octets en tout : 63 Ko restent libres par frame buffer.
+- À chaque image, chaque CPU projette le circuit pour ses lignes (comme
+  avant), puis écrit leurs entrées de la table de lignes (`render_line`) :
+  route k la plus proche (k = arrondi de w / 1,2 pixel, par un produit),
+  octet de départ = centre de la route k − centre à l'écran ; octet
+  impair : l'octet d'avant, et la ligne décalée d'un pixel (SFT). Route
+  entièrement hors de l'écran : de l'herbe seule. **224 écritures par
+  image** au lieu de 35 840.
+- Bandes claires et sombres par la palette : la route n'utilise que
+  quatre index (herbe, bordure, bitume, ligne blanche). Le Master écrit
+  au HBlank, depuis V_INT pour la ligne 0 et H_INT pour les suivantes,
+  le bit SFT de la ligne suivante et, quand la bande change, ses quatre
+  couleurs (16,5 changements par image en moyenne). Ses routines
+  n'acquittent l'interruption qu'à la fin. Le Slave n'a pas
+  d'interruption.
+- Le décor de fond (`sky.bmp`, `tools/sky.py`) est retiré : il ne tient
+  pas dans la table de lignes (512 + 320 pixels de large pour boucler,
+  93 Ko). Le haut de l'écran viendra des plans de la Mega Drive ; COMM 7
+  est libre, `bmp2c` reste construit pour plus tard.
+- `cost.h` réétalonné ; le code de chaque image (`project.c`,
+  `render_line`, 1 472 octets) va en RAM interne, la préparation des
+  lignes (code froid, section `.text.sdram`) en SDRAM.
+- Simulateur (`platform_headless.c`) : la synchro vidéo attend jusqu'à
+  2 ms (au lieu de 50 µs) que la H_INT soit servie. Sur une machine
+  virtuelle, un signal arrivait parfois trop tard, et les couleurs de
+  toutes les lignes suivantes de l'image étaient décalées.
+- `tests/run_tests.sh` relance une fois un scénario dont une capture
+  diffère (H_INT servie en retard sur une machine chargée ; un vrai
+  défaut se reproduit), et affiche les H_INT en retard.
+- README : retour de l'explication de `VDP_STATS`, de la section « Vers
+  une vraie 32X » et de la commande `git submodule add`.
+- Vérifié :
+  - `test_race` émule l'affichage du VDP (table de lignes, SFT, bande)
+    sur un frame buffer préparé : 300 224 lignes identiques au rendu
+    naïf (route de demi-largeur w_k la plus proche, centrée sur le pixel
+    le plus proche), une écriture par ligne, fenêtre toujours dans les
+    lignes préparées ; 5 016 images, projection par CPU identique à
+    celle de tout l'écran, 224 écritures par image ;
+  - simulateur complet : les 3 captures identiques à la référence ;
+  - banc SH2 : affichage identique à l'hôte (empreintes), 112 écritures
+    par CPU et par image.
+
+**Mesures** (banc, par CPU et par image, hors écritures FB) :
+
+| Version                               | Moyenne | Pire cas | Pire, écritures comprises |
+|---------------------------------------|---------|----------|---------------------------|
+| Précédente (pixels dessinés)          | 222 799 | 238 421  | 328 266 (85 %)            |
+| Table de lignes, cache 4 voies        |  75 616 |  84 766  |  85 326 (22 %)            |
+| Table de lignes, 2 voies + render.c en RAM | 101 014 | 117 948 | 118 508 (31 %)      |
+| **Table de lignes, 2 voies + project.c et render_line en RAM** | **66 086** | **73 787** | **74 347 (19 %)** |
+
+- Profil (49 000 instructions par image) : projection 60 %, division
+  (`__udivsi3`, environ 200 par image) 23 %, choix des lignes 10 %.
+- Bus du VDP : 224 écritures par image, 0,3 % du plafond (1 120 cycles
+  de vidage, contre 179 200).
+- Simulateur : 0,18 à 0,20 image de 1/60 s (interruptions du Master
+  estimées).
+
+**Ce qui reste pour plus tard** :
+- **à vérifier sur un émulateur 32X, puis sur la console** : que la
+  H_INT du Master tienne dans le HBlank avec SFT et quatre couleurs. Si
+  ce n'est pas le cas, le principe ne tient pas ;
+- la projection est faite en double (chaque CPU projette les 160
+  points) : la confier à un seul CPU libérerait l'autre entièrement ;
+  DIVU et des décalages non signés réduiraient la division ;
+- le haut de l'écran et les sprites, par la Mega Drive.
+
+Message de commit proposé :
+
+```
+Route par la table de lignes : le VDP dessine
+
+128 routes de demi-largeur 1,2 x k pixels, séparées par 320 pixels
+d'herbe, et les lignes du ciel sont préparées une fois dans chaque frame
+buffer. Chaque image ne fait qu'écrire la table de lignes (route la plus
+proche, décalage, SFT pour l'octet impair) : 224 écritures au lieu de
+35 840. Bandes claires et sombres par quatre couleurs de la palette,
+changées par le Master au HBlank avec SFT. Décor de fond retiré (le
+haut de l'écran viendra de la Mega Drive).
+
+Simulateur : attente de la H_INT jusqu'à 2 ms sans fenêtre.
+Tests : affichage du VDP émulé contre le rendu naïf. cost.h réétalonné :
+66 000 cycles par CPU et par image en moyenne, 74 000 au pire (19 %).
+```

@@ -9,11 +9,11 @@
 # 2. L'exécute sous qemu-sh4eb avec le greffon sh2cycles, qui applique le
 #    modèle de temps du SH2 (cycles par instruction, branchements,
 #    dépendances, cache et SDRAM). Un programme par CPU.
-#    Cache : par défaut en mode « 2 voies + RAM », le code du dessin des
-#    lignes (render.c) dans la RAM interne (bench_ram.ld). CACHE=4 : cache en 4 voies, tout en
+#    Cache : par défaut en mode « 2 voies + RAM », le code de chaque image
+#    (project.c, render_line) dans la RAM interne (bench_ram.ld). CACHE=4 : cache en 4 voies, tout en
 #    SDRAM (bench.ld), pour comparer.
 # 3. Calcule sur l'hôte les compteurs du modèle pour les mêmes images,
-#    vérifie que le code SH2 dessine les mêmes pixels, et ajuste les
+#    vérifie que le code SH2 donne le même affichage, et ajuste les
 #    coûts unitaires (fit.py).
 #
 # Il faut (Linux ; qemu en mode utilisateur n'existe pas sous macOS, où
@@ -46,15 +46,13 @@ OUT=build/sh2cycles
 T=tools/sh2cycles
 mkdir -p "$OUT"
 
-# Données de la démo (images, circuit), converties par les outils de l'hôte
-cc -std=c99 -O2 -Irace -o "$OUT/bmp2c" tools/bmp2c.c
+# Circuit de la démo, converti par l'outil de l'hôte
 cc -std=c99 -O2 -Irace -o "$OUT/track2c" tools/track2c.c -lm
-"$OUT/bmp2c" demo/assets/assets.txt "$OUT/demo_assets" 2>/dev/null
 "$OUT/track2c" demo/track.txt "$OUT/demo_track" demo_track 2>/dev/null
 
 INC="-Ipixel -Irace -I$T -I$OUT"
 ENGINE="race/project.c race/render.c"
-DATA="$OUT/demo_assets.c $OUT/demo_track.c demo/content.c"
+DATA="$OUT/demo_track.c demo/content.c"
 
 # ---- Hôte : compteurs du modèle -------------------------------------------
 cc -std=c99 -O2 -Wall $INC -o "$OUT/costs" $T/costs.c $ENGINE $DATA
@@ -72,7 +70,7 @@ else
   # pour le greffon.
   LDSCRIPT="-T $T/bench_ram.ld -Wl,--defsym,RAM_BASE=0x50000000"
   PLUGIN_OPTIONS=",ways=2,ram=0x50000000"
-  echo "Cache : 2 voies (2 Ko) + RAM interne (2 Ko) avec le code de render.c"
+  echo "Cache : 2 voies (2 Ko) + RAM interne (2 Ko) avec le code de chaque image"
 fi
 
 CFLAGS="-m2 -mb -O2 -std=c99 -ffreestanding -fno-builtin -Wall $INC"
@@ -83,8 +81,7 @@ OBJECTS="$OUT/start.o $OUT/project.o $OUT/render.o $OUT/data.o"
 for f in $DATA; do
   "${SH_ELF}gcc" $CFLAGS -c "$f" -o "$OUT/$(basename "$f" .c).o"
 done
-"${SH_ELF}ld" -r -o "$OUT/data.o" "$OUT/demo_assets.o" "$OUT/demo_track.o" \
-  "$OUT/content.o"
+"${SH_ELF}ld" -r -o "$OUT/data.o" "$OUT/demo_track.o" "$OUT/content.o"
 for cpu in master slave; do
   first=0
   [ $cpu = slave ] && first=1

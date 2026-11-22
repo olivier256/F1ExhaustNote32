@@ -1,11 +1,17 @@
 # F1 Exhaust Note 32
 
 Moteur de course pseudo-3D pour la Sega 32X, dans l'esprit d'Out Run,
-Super Hang-On ou F1 Exhaust Note : une route dessinée ligne par ligne,
-avec virages et côtes, sous un décor de fond qui défile. La 32X se
-conduit comme un VDP spécialisé pour le 68000 : le 68000 fait avancer la
-voiture et écrit sa position dans les registres COMM, les deux SH2
-dessinent.
+Super Hang-On ou F1 Exhaust Note : une route avec virages et côtes,
+affichée ligne par ligne. La 32X se conduit comme un VDP spécialisé pour
+le 68000 : le 68000 fait avancer la voiture et écrit sa position dans
+les registres COMM, les deux SH2 calculent ce que montre chaque ligne.
+
+Le principe : **c'est le VDP 32X qui dessine**. Toutes les lignes de
+route dont l'écran peut avoir besoin sont préparées une fois pour toutes
+dans le frame buffer ; à chaque image, les SH2 ne réécrivent que la
+table de lignes (une adresse par ligne d'écran : quelle largeur de
+route, décalée de combien), et le Master change au HBlank le décalage
+d'un pixel (SFT) et les couleurs des bandes claires et sombres.
 
 Le projet fait suite à SuperVDP (deux plans de tiles 16 × 16) et en
 garde le simulateur **pixel** (C, MiniFB, deux threads Master et Slave,
@@ -21,6 +27,9 @@ make run                      # compile et lance la démo
 make stats                    # la même, avec VDP_STATS=1
 make test                     # tous les tests (environ 10 s)
 ```
+
+À la création du dépôt, MiniFB s'ajoute une fois pour toutes par
+`git submodule add https://github.com/emoon/minifb.git minifb`.
 
 Sans MiniFB, seules les cibles sans fenêtre sont construites
 (`f1en32_headless`, `test_race`). Sous Linux, MiniFB demande les en-têtes
@@ -43,8 +52,9 @@ et se place à l'intérieur des virages qui arrivent.
 | B maintenu       | K        | frein                                   |
 | Start maintenu   | Entrée   | pause                                   |
 
-Il n'y a pas encore de sprites : ni la voiture, ni les adversaires, ni le
-décor du bord de la route.
+Pas encore de sprites (voiture, adversaires, décor du bord de la route),
+et le haut de l'écran n'est qu'un ciel en dégradé : ils viendront des
+plans et des sprites de la Mega Drive.
 
 ## Registres COMM
 
@@ -54,10 +64,11 @@ décor du bord de la route.
 | 2    | Slave → Master  | dernière image terminée                      |
 | 4, 5 | 68000 → SH2     | distance de la caméra sur le circuit (32 bits) |
 | 6    | 68000 → SH2     | écart latéral de la voiture (signé)          |
-| 7    | 68000 → SH2     | défilement horizontal du décor de fond       |
 
-Le Master relève les registres 4 à 7 une fois par image (deux lectures
-identiques de suite), puis publie la scène pour le Slave. Le circuit
+Le Master relève les registres 4 à 6 une fois par image (deux lectures
+identiques de suite : le manuel prévient qu'un registre lu pendant que
+l'autre côté l'écrit donne une valeur indéfinie), puis publie la scène
+pour le Slave. Le circuit
 lui-même est une donnée constante (en ROM sur la console), lue par le
 68000 comme par les SH2.
 
@@ -80,26 +91,50 @@ route derrière une crête. Les virages font glisser la route sur le côté :
 la somme des courbures, sommée deux fois.
 
 Chaque ligne d'écran est ainsi décrite **une seule fois** : soit la route
-(centre, demi-largeur, bandes claires ou sombres), soit le décor.
+(centre, demi-largeur, bande claire ou sombre), soit le ciel.
 
-**Le dessin** (`race/render.c`). Chaque mot de la ligne est écrit une
-fois, en 16 bits : 160 écritures par ligne, **35 840 par image** (46,7 %
-du plafond de 76 800), quel que soit le paysage.
-- Route : neuf plages de couleur unie (herbe, bordure, bitume, ligne,
-  bitume, ligne, bitume, bordure, herbe) ; un mot à cheval sur deux
-  plages réunit leurs couleurs. Les couleurs de la route ont des index
-  réservés (240 et au-delà), écrits à l'initialisation.
-- Décor : la ligne y d'une image de 512 pixels de large qui boucle,
-  copiée par mots. Une colonne de départ impaire est copiée depuis la
-  colonne paire précédente et affichée décalée d'un point (registre SFT,
-  écrit ligne par ligne par le Master en H_INT, comme dans SuperVDP) :
-  161 mots. Sous le décor (au-delà d'une crête), on prolonge sa couleur
-  de sol.
+**Les lignes préparées** (`race/render.c`, `render_prepare`). Sur une
+route plate, la demi-largeur grandit de 1,2 pixel par ligne d'écran
+(768 × (y − 96) / 640). Le moteur prépare donc 128 routes, de
+demi-largeur w_k = 1,2 × k (k de 0 à 127, jusqu'à 152 pixels), écrites
+une fois au démarrage dans chacun des deux frame buffers (le CPU n'écrit
+que dans celui qui n'est pas affiché, et chaque table de lignes désigne
+des lignes de son frame buffer). Les routes se suivent en mémoire,
+séparées par 320 pixels d'herbe : une fenêtre de 320 pixels autour
+d'une route ne voit jamais la suivante, quel que soit le décalage. Puis
+douze lignes de ciel unies (une par bande de 8 lignes d'écran) et une
+ligne de sol, pour ce qu'on voit au-delà d'une crête. En tout 67 890
+octets : il reste 63 Ko libres par frame buffer.
 
-**Le partage du travail** (`race/race.c`). Chaque CPU projette lui-même
-le circuit pour ses seules lignes (paires pour le Master, impaires pour
-le Slave), et obtient exactement les valeurs d'une projection de tout
-l'écran : aucun n'attend l'autre ni ne lit ce que l'autre a calculé.
+La route n'utilise que quatre index de couleur (herbe, bordure, bitume,
+ligne blanche) : les bandes claires et sombres ne sont pas dans les
+pixels, mais dans la palette, changée ligne par ligne (sur les bandes
+sombres, la ligne blanche prend la couleur du bitume).
+
+**Le choix des lignes** (`render_line`). Pour une ligne de route : k = la
+demi-largeur arrondie à un multiple de 1,2 pixel (un produit, pas de
+division), puis l'octet de la route k qui doit tomber sur le pixel 0 de
+l'écran (centre de la route k − centre à l'écran). La table ne donne que
+des adresses de mots : si cet octet est impair, on pointe l'octet
+d'avant, et la ligne est affichée décalée d'un pixel (SFT). Une route
+entièrement hors de l'écran montre de l'herbe seule. Une ligne de ciel
+pointe sur la ligne de sa bande. **Une écriture par ligne d'écran : 224
+par image**.
+
+**Le HBlank** (`race/race.c`). Chaque CPU range, pour ses lignes, le bit
+SFT et la bande (claire ou sombre) dans une table par frame buffer.
+Pendant l'affichage, le Master applique ceux de la ligne suivante :
+depuis sa routine V_INT pour la ligne 0, puis depuis sa routine H_INT à
+chaque HBlank. Il écrit SFT, et les quatre couleurs de la route quand la
+bande change (16,5 fois par image en moyenne sur la démo). C'est le
+Master parce qu'il a la priorité sur le bus ; la palette n'est
+accessible que pendant les blancs. Le Slave n'a pas d'interruption.
+
+**Le partage du travail.** Chaque CPU projette lui-même le circuit pour
+ses seules lignes (paires pour le Master, impaires pour le Slave), et
+obtient exactement les valeurs d'une projection de tout l'écran : aucun
+n'attend l'autre ni ne lit ce que l'autre a calculé. C'est maintenant
+l'essentiel du travail des CPU.
 
 **La division.** Le SH2 n'en a pas d'instruction : toutes passent par
 `div_u32` (`race/fixed.h`), une par point projeté et une par segment
@@ -107,15 +142,41 @@ dessiné, soit environ 160 + 40 par image et par CPU. Elle appelle libgcc
 pour l'instant ; l'unité DIVU du SH7604 la remplacera si le banc le
 justifie.
 
+**Code et cache.** Le moteur suppose le cache du SH2 en mode « 2 voies +
+RAM » : le code de chaque image (`project.c`, `render_line`, 1 472
+octets) dans les 2 Ko de RAM interne ; la préparation des lignes, faite
+une fois, en SDRAM (section `.text.sdram`).
+
 ## Mesurer : `VDP_STATS=1`
 
-Comme dans SuperVDP : toutes les 5 secondes dans la fenêtre, et à chaque
-capture sans fenêtre, les écritures dans le frame buffer (comptées
-exactement), les cycles du bus du VDP, et les cycles CPU **estimés** par
-le modèle de coûts du moteur (`race/cost.h`), étalonné par le banc
-`tools/sh2cycles` (le vrai code compilé pour SH2, exécuté sous qemu avec
-un modèle de temps du SH2). La dernière ligne donne la durée de l'image
-en images de 1/60 s : au-delà de 1, on ne tient pas 60 images/s.
+Toutes les 5 secondes dans la fenêtre, et à chaque capture sans fenêtre :
+
+```
+acces bus par image : master derniere 112 ... | total derniere 224 = 0.3 % du plafond 76800
+cycles bus VDP (partages) : 224 ecritures x 5 = 1120 / 384000 (0.3 %)
+cycles CPU estimes (modele du jeu + ecritures 3..5 c) : master 77949 + ecritures = 78285..78509 / 384000 ...
+derniere image : 0.20 image(s) de 1/60 s au mieux -> 60 images/s
+```
+
+- **Écritures** : comptées exactement par le simulateur (toutes passent
+  par `vdp_dram_write16`). Le « max (période) » de la première période
+  compte aussi les lignes préparées au démarrage.
+- **Cycles bus VDP** : d'après le *32X Hardware Manual*, le VDP vide
+  environ un mot toutes les 5 cycles, pour les deux CPU ensemble ; une
+  image dure environ 384 000 cycles SH2 (23,01 MHz), d'où le plafond de
+  76 800 écritures.
+- **Cycles CPU** : le simulateur exécute du code natif et ne mesure pas
+  le temps SH2. Le moteur compte ce qu'il fait et le multiplie par des
+  coûts unitaires (`race/cost.h`) ; le simulateur ajoute 3 à 5 cycles
+  par écriture du CPU. Les coûts unitaires sont **étalonnés** par le banc
+  `tools/sh2cycles` : le vrai code compilé pour SH2, exécuté sous qemu
+  avec un modèle de temps du SH2 (voir `tools/sh2cycles/README.md`).
+  C'est un modèle, pas une 32X réelle, mais le nombre d'instructions est
+  exact. Les interruptions du Master (H_INT, changements de couleurs)
+  sont estimées.
+- **Verdict** : la dernière ligne donne la durée de l'image en images de
+  1/60 s (le CPU le plus lent, ou le bus du VDP). Au-delà de 1, on ne
+  tient pas 60 images/s.
 
 La fenêtre tourne toujours à 60 images/s sur l'hôte : seules les
 statistiques disent ce que ferait la vraie machine.
@@ -123,26 +184,30 @@ statistiques disent ce que ferait la vraie machine.
 ## Vérifier
 
 `tests/run_tests.sh` (ou `make test`) :
-1. `test_race` : `render_line` contre un rendu naïf pixel par pixel, sur
-   200 000 lignes de route au hasard (dont hors de l'écran) et toutes les
-   colonnes de départ du décor ; 160 ou 161 écritures par ligne, chaque
-   mot écrit une fois. Puis 5 000 images (plus d'un tour de la démo, et
-   des vues au hasard) : la projection de chaque CPU (une ligne sur deux)
-   doit donner exactement celle de tout l'écran, l'image des deux CPU être
-   identique au rendu naïf, et la route toujours visible en bas de
-   l'écran.
-2. Le simulateur complet sans fenêtre : la manette suit un scénario qui
-   met la démo en pause avant chaque capture, et l'image capturée doit
-   être identique, octet pour octet, à celle que `test_race` calcule pour
-   le même scénario (le programme 68000 rejoué image par image).
+1. `test_race` : les lignes sont préparées dans un frame buffer de test,
+   puis le test fait ce que fera le VDP (lire la table de lignes,
+   appliquer SFT et la bande claire ou sombre) et compare au rendu naïf,
+   écrit indépendamment : 300 000 lignes de route au hasard (dont très
+   larges ou loin hors de l'écran) et toutes les lignes de ciel, une
+   écriture par ligne, fenêtre toujours dans les lignes préparées. Puis
+   5 000 images (plus d'un tour de la démo, et des vues au hasard) : la
+   projection de chaque CPU (une ligne sur deux) doit donner exactement
+   celle de tout l'écran, l'image être identique au rendu naïf, 224
+   écritures par image, et la route toujours visible en bas de l'écran.
+2. Le simulateur complet sans fenêtre (H_INT comprises) : la manette suit
+   un scénario qui met la démo en pause avant chaque capture, et l'image
+   capturée doit être identique, octet pour octet, à celle que
+   `test_race` calcule pour le même scénario. Une image qui diffère fait
+   relancer le scénario une fois : sur une machine chargée, une H_INT
+   servie trop tard décale les couleurs des lignes suivantes (compté « en
+   retard » dans le journal).
 
 ## Les données
 
-- Le décor : `demo/assets/sky.bmp`, 512 × 112, produit par
-  `tools/sky.py` (Pillow ; une image originale, calculée), converti en C
-  par `tools/bmp2c` (type `bitmap`). Index 240 et au-delà réservés à la
-  route.
 - Le circuit : `demo/track.txt`, converti par `tools/track2c`.
+- Les couleurs (ciel, route claire et sombre) : `race/render.c`.
+- `tools/bmp2c` (images BMP 8 bits → C) reste construit, pour les
+  sprites et les plans à venir ; la démo n'a pas d'image pour l'instant.
 
 ## Organisation
 
@@ -152,15 +217,29 @@ statistiques disent ce que ferait la vraie machine.
 | `race/race.c`           | boucles Master et Slave, relevé des registres, interruptions, échange de frame buffer |
 | `race/world.h`          | circuit, caméra, constantes de projection              |
 | `race/project.c`        | projection : description de chaque ligne d'écran       |
-| `race/render.c`         | dessin d'une ligne (route ou décor)                    |
+| `race/render.c`         | lignes préparées, choix d'une ligne (table, SFT, bande) |
 | `race/cost.h`           | modèle de coûts (cycles estimés)                       |
 | `race/shared.h`         | registres COMM, scène partagée, accès sans cache       |
-| `demo/`                 | circuit, décor et programme 68000 de la démo           |
+| `demo/`                 | circuit et programme 68000 de la démo                  |
 | `tools/bmp2c.c`         | convertisseur BMP → C                                  |
 | `tools/track2c.c`       | convertisseur circuit → C                              |
-| `tools/sky.py`          | fabrique le décor de la démo                           |
 | `tests/`                | tests                                                  |
 | `tools/sh2cycles/`      | banc SH2 sous qemu : temps du code compilé, étalonnage de `cost.h` |
+
+## Vers une vraie 32X
+
+- Les lignes préparées (68 Ko) sont écrites une fois par frame buffer au
+  démarrage, par le Master ; ensuite, 224 écritures par image.
+- `vdp_dram_write16()` devient une écriture directe en 2400 0000h +
+  offset ; `SHARED()` donne déjà l'adresse cache-through sur SH2.
+- **À vérifier sur un émulateur 32X, puis sur la console** : que la
+  routine H_INT du Master écrive SFT et quatre couleurs de la palette
+  dans le HBlank (le simulateur ne mesure pas ce temps). Sinon, le
+  principe des bandes par la palette ne tient pas.
+- Programme de démarrage SH2 à écrire : cache en 2 voies + RAM, code de
+  chaque image en C000 0000h, V_INT et H_INT démasquées sur le Master.
+- `tools/sh2cycles/build-tools.sh` construit la chaîne `sh-elf` (gcc
+  13.2) qui servira aussi pour la console.
 
 ## Licence
 

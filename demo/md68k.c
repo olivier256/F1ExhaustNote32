@@ -2,7 +2,7 @@
    Programme 68000 (Mega Drive) de la démo.
 
    À chaque VBlank, il fait avancer la voiture sur le circuit et écrit sa
-   position dans les registres COMM 4 à 7 (voir race/shared.h) : pour lui,
+   position dans les registres COMM 4 à 6 (voir race/shared.h) : pour lui,
    la 32X est un VDP qui sait dessiner une route. Les SH2 ne font que
    dessiner.
 
@@ -14,8 +14,7 @@
 
    Trajectoire scriptée : la voiture accélère jusqu'à sa vitesse de
    pointe, et se place d'elle-même à l'intérieur des virages qui arrivent
-   (elle regarde LOOKAHEAD segments devant elle). Le décor de fond défile
-   dans les virages, d'autant plus vite qu'ils sont serrés.
+   (elle regarde LOOKAHEAD segments devant elle).
 
    Commandes :
    - Gauche / Droite : la voiture s'écarte (le script la ramène quand on
@@ -44,7 +43,6 @@
 static uint32_t position; /* distance de la caméra, 24.8 */
 static int32_t speed;     /* 24.8 par image */
 static int32_t playerX;   /* écart latéral, 24.8 */
-static uint32_t skyX;     /* défilement du décor, 24.8 */
 
 static int32_t clamp(int32_t v, int32_t min, int32_t max) {
     return v < min ? min : (v > max ? max : v);
@@ -84,9 +82,6 @@ static void advance(unsigned pad) {
         playerX += (target - playerX) >> 5;
     }
     playerX = clamp(playerX, -(PLAYER_LIMIT * 256), PLAYER_LIMIT * 256);
-
-    /* Le décor tourne avec la route : courbure x distance parcourue */
-    skyX += (uint32_t)((t->segments[here].curve * (speed >> 8)) >> 9);
 }
 
 void md_vint(void) {
@@ -98,5 +93,4 @@ void md_vint(void) {
     comm[COMM_POSITION_HI] = (uint16_t)(p >> 16);
     comm[COMM_POSITION_LO] = (uint16_t)p;
     comm[COMM_PLAYER_X] = (uint16_t)(int16_t)(playerX >> 8);
-    comm[COMM_SKY_X] = (uint16_t)(skyX >> 8);
 }
