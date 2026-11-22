@@ -632,3 +632,81 @@ Par CPU et par image, hors écritures FB : 259 000 cycles en moyenne,
 290 000 au pire (277 000 et 316 000 avant) ; le pire cas tient dans
 l'image même avec des écritures à 5 cycles.
 ```
+
+---
+
+Part fixe de chaque ligne allégée ; statistiques VBlank corrigées
+
+**Ce que fait cette version** :
+- `compose_line` :
+  - un segment ne garde que sa fin et ce qu'on y dessine (`kind` : copie
+    de B, copie de A, fusion), décidé une fois quand il est formé : 4
+    octets au lieu de 8, et plus de comparaison de classe au dessin. La
+    table des segments est dans la pile, en SDRAM : moins d'écritures et
+    moins de lignes de cache ;
+  - la colonne de départ n'est calculée que pour le plan lu (une seule
+    pour une copie, deux pour une fusion) ;
+  - `PlaneRow` ne garde que ce que lisent la copie et la fusion (rangée,
+    fin de rangée, ligne de tile, largeur) ; la ligne de tile et les
+    changements de classe de A restent dans `compose_line` ;
+  - `planeRowInit` recopiée dans `compose_line` avec la fusion en
+    assembleur ; appelée tout en C, sinon le code chaud dépasserait
+    2 Ko ;
+  - le mot de frontière (code froid) calcule lui-même ses colonnes.
+- Simulateur `pixel/` : le relevé des statistiques lisait le nombre de
+  VBlank avant les VBlank vus par chaque CPU ; un VBlank commencé et vu
+  entre les deux lectures donnait un nombre de « ratés » négatif
+  (affiché 18446744073709551615). Relevé dans l'ordre inverse, avec une
+  barrière (ARM).
+- `cost.h` réétalonné (-3 % / +4 %).
+- Vérifié : `test_compose`, 1 168 576 lignes sans erreur ; les 5
+  scénarios du simulateur complet identiques à la référence ;
+  `test_merge` sans différence ; sur SH2, pixels identiques à l'hôte, en
+  C comme en assembleur.
+
+**Mesures** (banc, par CPU et par image, hors écritures FB) :
+
+| Version                   | Moyenne | Pire cas | Pire cas + écritures à 5 cycles |
+|---------------------------|---------|----------|---------------------------------|
+| Précédente, assembleur    | 258 651 | 289 706  | 379 626 (99 %)                  |
+| Celle-ci, assembleur      | 247 820 | 276 774  | 366 694 (95 %)                  |
+| Celle-ci, tout en C       | 261 543 | 292 469  | 382 389 (100 %)                 |
+
+- code en RAM interne : 1 904 octets avec l'assembleur, 2 036 tout en C ;
+- selon la parité de xA et xB (moyenne / pire, Master) : pair-pair
+  239 000 / 252 000, pair-impair 253 000 / 271 000, impair-pair 260 000 /
+  277 000, impair-impair 242 000 / 255 000 ;
+- scénarios du simulateur (écritures à 3 cycles) : 0,75 à 0,85 image de
+  1/60 s.
+
+**Ce qui reste pour plus tard** :
+- `compose_line` reste la deuxième dépense (32 % des instructions sur
+  l'image profilée) : environ 200 instructions par ligne et 40 par
+  segment. Une version en assembleur pourrait en gagner une quinzaine de
+  milliers par image ; à discuter avant ;
+- essai noté : la pile en RAM interne (accès sans attente) ne tient pas
+  à côté du code (448 octets libres, débordement constaté) ;
+- non modélisé par le banc : le conflit entre lecture d'instruction et
+  accès aux données dans le même cycle ;
+- le coût des interruptions du Master (estimé à 40 cycles) reste à
+  mesurer ; la routine H_INT dans le seul HBlank, à vérifier sur un
+  émulateur 32X ;
+- le programme de démarrage SH2 (cache en 2 voies, code chaud en
+  C000 0000h, V_INT et H_INT démasquées sur le Master).
+
+Message de commit proposé :
+
+```
+Part fixe de chaque ligne allégée ; statistiques VBlank corrigées
+
+compose_line : segments réduits à leur fin et à ce qu'on y dessine
+(4 octets, décidé à la formation), colonne de départ calculée pour le
+seul plan lu, PlaneRow réduite aux champs lus par la copie et la fusion,
+planeRowInit recopiée avec SUPERVDP_ASM. cost.h réétalonné.
+
+Simulateur : VBlank vus relevés avant le nombre de VBlank (le nombre de
+ratés pouvait devenir négatif).
+
+Par CPU et par image, hors écritures FB, avec l'assembleur : 248 000
+cycles en moyenne, 277 000 au pire (259 000 et 290 000 avant).
+```

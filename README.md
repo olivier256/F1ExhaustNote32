@@ -107,7 +107,7 @@ code froid (le mot de frontière, fusionné pixel par pixel) en SDRAM.
 fusionne A et B par `supervdp/merge_sh2.S` (même interface que la
 version C, `mergeSpan`, qui reste la référence et la version de l'hôte ;
 vérifié contre elle par `tools/sh2cycles/test_merge.c`). Code en RAM
-interne : 1 852 octets avec l'assembleur, 2 028 sans. Voir `tools/sh2cycles`.
+interne : 1 904 octets avec l'assembleur, 2 036 sans. Voir `tools/sh2cycles`.
 
 ## Mesurer : `VDP_STATS=1`
 

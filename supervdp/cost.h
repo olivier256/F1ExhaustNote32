@@ -60,12 +60,12 @@ typedef struct {
    compilé avec SUPERVDP_ASM=1 (fusion en assembleur, merge_sh2.S),
    décalage d'écran choisi ligne par ligne, cache en 2 voies + RAM. */
 #define CYCLES_LINE 0         /* compté dans CYCLES_A_TILE */
-#define CYCLES_A_TILE 16      /* part fixe de la ligne, répartie par tile */
-#define CYCLES_RUN 186        /* segment : formation, choix du chemin */
-#define CYCLES_TILE_CHUNK 54  /* morceau de tile : adresse, cache, boucle */
+#define CYCLES_A_TILE 14      /* part fixe de la ligne, répartie par tile */
+#define CYCLES_RUN 194        /* segment : formation, choix du chemin */
+#define CYCLES_TILE_CHUNK 53  /* morceau de tile : adresse, cache, boucle */
 #define CYCLES_WORD_EVEN 0    /* compté dans les coûts ci-dessus */
-#define CYCLES_WORD_ODD 2     /* surcoût d'un mot source impaire */
-#define CYCLES_WORD_MERGED 23 /* surcoût d'un mot fusionné */
+#define CYCLES_WORD_ODD 3     /* surcoût d'un mot source impaire */
+#define CYCLES_WORD_MERGED 17 /* surcoût d'un mot fusionné */
 
 /* Interruptions du Master, par image : une H_INT par ligne affichée (elle
    écrit le décalage d'écran de la ligne suivante) et une V_INT. Entrée

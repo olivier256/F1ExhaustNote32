@@ -132,24 +132,33 @@ static inline uint32_t readQuad(const uint8_t *p) {
 /* ---- Une ligne d'un plan --------------------------------------------------
  */
 
+/* Ce que les fonctions de copie et de fusion lisent d'un plan. Rangé
+   dans la pile (passé par adresse) : le moins de champs possible, chaque
+   écriture en SDRAM coûtant un cycle de plus. */
 typedef struct {
     const uint16_t *row;     /* numéros de tile de la rangée traversée */
     const uint16_t *rowEnd;  /* juste après le dernier */
     const uint8_t *tileLine; /* ligne voulue dans la tile 0 */
-    unsigned rowInTile;      /* numéro de cette ligne dans la tile */
     unsigned width;          /* largeur du plan en pixels */
-    const uint8_t *changes;  /* changements de classe de la ligne */
 } PlaneRow;
 
-static void planeRowInit(PlaneRow *pr, const Tilemap *map, const Tileset *tiles,
-                         int worldY) {
+/* Remplit 'pr' pour la ligne worldY du plan ; renvoie cette ligne ramenée
+   dans le plan (0 à hauteur - 1). Recopiée dans compose_line avec la
+   fusion en assembleur (SUPERVDP_ASM) ; appelée sinon : tout en C, le code
+   chaud ne tiendrait plus dans les 2 Ko de RAM interne. */
+#if defined(__sh__) && SUPERVDP_ASM
+#define PLANE_ROW_INIT static inline
+#else
+#define PLANE_ROW_INIT static
+#endif
+PLANE_ROW_INIT unsigned planeRowInit(PlaneRow *pr, const Tilemap *map,
+                                     const Tileset *tiles, int worldY) {
     const unsigned y = wrapIn(worldY, (unsigned)map->heightTiles << TILE_SHIFT);
     pr->row = map->cells + (y >> TILE_SHIFT) * map->widthTiles;
     pr->rowEnd = pr->row + map->widthTiles;
-    pr->rowInTile = y & (TILE_SIZE - 1);
-    pr->tileLine = tile_row(tiles, 0, pr->rowInTile);
+    pr->tileLine = tile_row(tiles, 0, y & (TILE_SIZE - 1));
     pr->width = (unsigned)map->widthTiles << TILE_SHIFT;
-    pr->changes = map->classChanges + y * map->changeBytes;
+    return y;
 }
 
 /* Premier pixel de la tile dont 'cell' donne le numéro, sur la ligne */
@@ -409,11 +418,15 @@ static inline unsigned pixelAt(const PlaneRow *pr, unsigned x) {
     return tileStart(pr, pr->row + (x >> TILE_SHIFT))[x & (TILE_SIZE - 1)];
 }
 
-/* Le mot de frontière entre deux segments (colonnes xa et xa + 1 de A,
-   xb et xb + 1 de B) : quatre pixels lus directement, sans curseurs. */
-COLD_CODE static void mergeWord(Dest d, const PlaneRow *pa, unsigned xa,
-                                const PlaneRow *pb, unsigned xb,
+/* Le mot de frontière entre deux segments, à la colonne p de la ligne
+   (colonnes xa0 + p et suivante de A, xb0 + p et suivante de B) : quatre
+   pixels lus directement, sans curseurs. Les colonnes sont calculées ici,
+   dans le code froid, plutôt que dans compose_line. */
+COLD_CODE static void mergeWord(Dest d, const PlaneRow *pa, unsigned xa0,
+                                const PlaneRow *pb, unsigned xb0, unsigned p,
                                 ComposeCost *cost) {
+    const unsigned xa = advance(xa0, p, pa->width);
+    const unsigned xb = advance(xb0, p, pb->width);
     const unsigned xa1 = xa + 1 == pa->width ? 0 : xa + 1;
     const unsigned xb1 = xb + 1 == pb->width ? 0 : xb + 1;
     unsigned left = pixelAt(pa, xa), right = pixelAt(pa, xa1);
@@ -438,12 +451,13 @@ static const uint32_t classMasks[TILE_SIZE] = {
 /* Bits de la classe opaque (01) dans toutes les lignes */
 #define ALL_ROWS_OPAQUE 0x55555555u
 
-/* Segment de la ligne : colonnes [start, end) comptées depuis la colonne
-   scrollAX - 1 du plan A, une classe (déjà masquée : comparée aux valeurs
-   de la ligne, sans décalage) */
+/* Segment de la ligne : il finit à la colonne 'end' (comptée depuis la
+   colonne scrollAX - 1 du plan A) et commence où finit le précédent.
+   'kind' : ce qu'on y dessine. */
+enum { RUN_COPY_B, RUN_COPY_A, RUN_MERGE };
 typedef struct {
-    int16_t start, end;
-    uint32_t rowClass;
+    uint16_t end;
+    uint16_t kind;
 } Run;
 
 /* Segments formés sur LINE_SPAN pixels, de la colonne scrollAX - 1 à la
@@ -465,11 +479,11 @@ int compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
                  int scrollAX, int worldAY, const Tilemap *planeB, int scrollBX,
                  int worldBY, ComposeCost *cost) {
     PlaneRow pa, pb;
-    planeRowInit(&pa, planeA, tiles, worldAY);
+    const unsigned yA = planeRowInit(&pa, planeA, tiles, worldAY);
     planeRowInit(&pb, planeB, tiles, worldBY);
 
     /* Classes de cette ligne de tile, masquées */
-    const uint32_t classMask = classMasks[pa.rowInTile];
+    const uint32_t classMask = classMasks[yA & (TILE_SIZE - 1)];
     const uint32_t opaque = classMask & ALL_ROWS_OPAQUE;
     const uint32_t *const rowClasses = tiles->rowClasses;
 
@@ -477,7 +491,7 @@ int compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
 
     /* 1. Segments : la ligne de A depuis la colonne scrollAX - 1, les
           tiles voisines de même classe regroupées. Les colonnes où la
-          classe change sont lues dans pa.changes (assets_types.h), 32 à la
+          classe change sont lues dans classChanges (assets_types.h), 32 à la
           fois : on ne s'arrête que sur les changements, et la boucle finit
           après le dernier. La classe du segment en cours reste dans une
           variable locale (un registre) ; le segment n'est rangé qu'une fois
@@ -493,9 +507,16 @@ int compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
     Run *run = runs;
     unsigned start = 0;
     unsigned fromA = 0, fromB = 0;
-    uint32_t current = rowClasses[pa.row[col0]] & classMask;
     COST_ADD(cost, aTiles,
              (LINE_SPAN - firstSx + 2 * TILE_SIZE - 1) >> TILE_SHIFT);
+
+    /* Ce qu'on dessine dans le segment en cours, d'après la classe de sa
+       ligne de tile */
+#define KIND_OF(rowClass)                                                      \
+    ((rowClass) == opaque ? RUN_COPY_A                                         \
+     : (rowClass) == 0    ? RUN_COPY_B                                         \
+                          : RUN_MERGE)
+    unsigned kind = KIND_OF(rowClasses[pa.row[col0]] & classMask);
 
     /* Bits des colonnes suivantes, col0 + 1 et au-delà, en tête de
        'bits' : 32 bits lus depuis l'octet qui contient le premier, puis
@@ -503,7 +524,8 @@ int compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
        colonnes de la ligne : 21 si elle entame sa première tile par son
        dernier pixel (firstSx = 1), 20 sinon. */
     const unsigned b = col0 + 1;
-    const uint8_t *const p8 = pa.changes + (b >> 3);
+    const uint8_t *const p8 =
+        planeA->classChanges + yA * planeA->changeBytes + (b >> 3);
     uint32_t bits = (uint32_t)p8[0] << 24 | (uint32_t)p8[1] << 16 |
                     (uint32_t)p8[2] << 8 | p8[3];
     if (b & 4)
@@ -520,24 +542,23 @@ int compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
         unsigned col = b + ((sx - firstSx) >> TILE_SHIFT);
         while (col >= planeA->widthTiles)
             col -= planeA->widthTiles;
-        if (current == opaque)
+        if (kind == RUN_COPY_A)
             fromA += sx - start;
-        else if (current == 0)
+        else if (kind == RUN_COPY_B)
             fromB += sx - start;
-        run->start = (int16_t)start;
-        run->end = (int16_t)sx;
-        run->rowClass = current;
+        run->end = (uint16_t)sx;
+        run->kind = (uint16_t)kind;
         run++;
         start = sx;
-        current = rowClasses[pa.row[col]] & classMask;
+        kind = KIND_OF(rowClasses[pa.row[col]] & classMask);
     }
-    if (current == opaque)
+#undef KIND_OF
+    if (kind == RUN_COPY_A)
         fromA += LINE_SPAN - start;
-    else if (current == 0)
+    else if (kind == RUN_COPY_B)
         fromB += LINE_SPAN - start;
-    run->start = (int16_t)start;
     run->end = LINE_SPAN; /* la dernière tile est coupée */
-    run->rowClass = current;
+    run->kind = (uint16_t)kind;
     const Run *const lastRun = run;
 
     /* 2. Décalage d'écran (SFT) de cette ligne. Sans décalage, le pixel x
@@ -582,16 +603,20 @@ int compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
 
         if (end > p) {
             const unsigned count = end - p;
-            const unsigned xa = advance(xa0, p, pa.width);
-            const unsigned xb = advance(xb0, p, pb.width);
             COST_ADD(cost, runs, 1);
 
-            if (run->rowClass == opaque)
-                copyA(DEST(offset + p), &pa, xa, count, cost);
-            else if (run->rowClass == 0)
-                copyB(DEST(offset + p), &pb, xb, count, cost);
-            else
-                MERGE_SPAN(DEST(offset + p), &pa, xa, &pb, xb, count, cost);
+            /* Colonne de départ calculée pour le seul plan lu */
+            if (run->kind == RUN_COPY_B) {
+                copyB(DEST(offset + p), &pb, advance(xb0, p, pb.width), count,
+                      cost);
+            } else {
+                const unsigned xa = advance(xa0, p, pa.width);
+                if (run->kind == RUN_COPY_A)
+                    copyA(DEST(offset + p), &pa, xa, count, cost);
+                else
+                    MERGE_SPAN(DEST(offset + p), &pa, xa, &pb,
+                               advance(xb0, p, pb.width), count, cost);
+            }
             p = end;
         }
 
@@ -599,8 +624,7 @@ int compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
            cheval sur ce segment et le suivant. */
         if (runEnd & 1) {
             COST_ADD(cost, runs, 1);
-            mergeWord(DEST(offset + p), &pa, advance(xa0, p, pa.width), &pb,
-                      advance(xb0, p, pb.width), cost);
+            mergeWord(DEST(offset + p), &pa, xa0, &pb, xb0, p, cost);
             p += 2;
         }
     }

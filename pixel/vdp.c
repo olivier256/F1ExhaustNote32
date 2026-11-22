@@ -337,9 +337,14 @@ void vdp_overwrite_write32(uint32_t offset, uint32_t pixels) {
 }
 
 void vdp_get_stats(vdp_stats *stats) {
-    stats->vblanks = _vblanks;
+    /* Les CPU comptent un VBlank vu pendant qu'on lit : relever d'abord
+       les VBlank vus, puis le nombre de VBlank. Dans l'autre ordre, un
+       VBlank commencé et vu entre les deux lectures donnait plus de VBlank
+       vus que de VBlank (et un nombre de « ratés » négatif). */
     for (int i = 0; i < PLATFORM_CPU_COUNT; i++)
         stats->seen[i] = _seen[i];
+    __atomic_thread_fence(__ATOMIC_ACQUIRE); /* ordre gardé sur ARM aussi */
+    stats->vblanks = _vblanks;
 }
 
 /* ---- Rendu ------------------------------------------------------------- */
