@@ -49,10 +49,13 @@ mkdir -p "$OUT"
 # Circuit de la démo, converti par l'outil de l'hôte
 cc -std=c99 -O2 -Irace -o "$OUT/track2c" tools/track2c.c -lm
 "$OUT/track2c" demo/track.txt "$OUT/demo_track" demo_track 2>/dev/null
+# Objets du circuit (images des accessoires), convertis de même
+cc -std=c99 -O2 -Irace -o "$OUT/bmp2c" tools/bmp2c.c
+"$OUT/bmp2c" demo/assets/assets.txt "$OUT/demo_assets" >/dev/null
 
 INC="-Ipixel -Irace -I$T -I$OUT"
 ENGINE="race/project.c race/render.c race/hud.c"
-DATA="$OUT/demo_track.c demo/content.c"
+DATA="$OUT/demo_track.c $OUT/demo_assets.c demo/content.c"
 
 # ---- Hôte : compteurs du modèle -------------------------------------------
 cc -std=c99 -O2 -Wall $INC -o "$OUT/costs" $T/costs.c $ENGINE $DATA
@@ -82,7 +85,7 @@ OBJECTS="$OUT/start.o $OUT/project.o $OUT/render.o $OUT/hud.o $OUT/data.o"
 for f in $DATA; do
   "${SH_ELF}gcc" $CFLAGS -c "$f" -o "$OUT/$(basename "$f" .c).o"
 done
-"${SH_ELF}ld" -r -o "$OUT/data.o" "$OUT/demo_track.o" "$OUT/content.o"
+"${SH_ELF}ld" -r -o "$OUT/data.o" "$OUT/demo_track.o" "$OUT/demo_assets.o" "$OUT/content.o"
 for cpu in master slave; do
   first=0
   [ $cpu = slave ] && first=1

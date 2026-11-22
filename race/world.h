@@ -41,10 +41,21 @@ typedef struct {
     uint8_t unused;
 } Segment;
 
+/* Objet du bord de la route (pneus, panneau, palmier...) : posé au début
+   d'un segment, à un écart latéral du centre de la route */
+typedef struct {
+    uint16_t segment;
+    int16_t x;    /* écart au centre de la route (négatif : à gauche) */
+    uint8_t kind; /* type d'objet : index dans RaceContent.props */
+    uint8_t unused;
+} TrackObject;
+
 typedef struct {
     uint16_t count;          /* segments ; le circuit boucle */
     const Segment *segments; /* le premier commence à la hauteur 0, et le
                                 circuit y revient */
+    uint16_t objectCount;
+    const TrackObject *objects; /* par segment croissant */
 } Track;
 
 /* Longueur du circuit, en unités */

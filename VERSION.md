@@ -1024,3 +1024,85 @@ VDP 32X au VBlank, transfère tiles et table des sprites, le rend
 Compteur de distance en sprites Mega Drive, refait à chaque image.
 cost.h réétalonné : 69 000 cycles par CPU et par image, 77 000 au pire.
 ```
+
+---
+
+Objets du circuit mis à l'échelle par les SH2 en sprites Mega Drive
+
+**Ce que fait cette version** (preuve de concept) :
+- Données :
+  - `tools/props.py` : trois objets générés (pile de pneus 32 x 32,
+    panneau « TURBO » 96 x 48, palmier 48 x 96), chacun en trois tailles
+    (pleine, moitié, quart, par vote majoritaire sur des blocs de
+    2 x 2) ; 15 couleurs communes, index 0 transparent ;
+    `demo/assets/props/` et `demo/assets/assets.txt` ; chaîne `bmp2c`
+    rétablie dans CMake ;
+  - `tools/track2c` : lignes `object TYPE X PREMIER DERNIER PAS`, objets
+    triés par segment ; 182 objets sur le circuit de la démo.
+- Moteur :
+  - `project_lines` rend aussi, par segment, position, échelle et ligne
+    de crête déjà couverte (`SegmentView`) ;
+  - `race/sprites.c` : plan calculé à l'identique par les deux CPU (12
+    objets au plus, du plus proche au plus lointain ; taille source ;
+    découpe en sprites de 32 x 32 au plus ; budgets de 168 tiles et 68
+    entrées, 20 sprites et 320 pixels par ligne), puis mise à l'échelle
+    par colonnes et lignes répétées ou omises, objets de rang pair au
+    Master, impair au Slave ; images sources recopiées en SDRAM au
+    démarrage ;
+  - `hud_build` écrit le compteur au début de la zone de transfert, à la
+    suite de laquelle viennent les objets ; l'en-tête est écrit par
+    `sprites_write_header` ;
+  - macro `COLD_CODE` déplacée dans `fixed.h` ; `hud_digit_pixel`, qui
+    ne sert qu'aux tests, passe en SDRAM ;
+  - `cost.h` : `CYCLES_SPRITE_OBJECT` (800) et `CYCLES_SPRITE_TILE`
+    (700), estimations à mesurer.
+- Programme 68000 : palette 1 de la CRAM écrite depuis la palette des
+  BMP (composantes ramenées à 3 bits).
+- Tests :
+  - `test_race` : 5 000 images (trajectoire et vues au hasard) ; plan
+    identique pour les deux CPU ; tiles et table des sprites relues comme
+    le VDP Mega Drive, comparées pixel par pixel à un rendu naïf des
+    objets ; budget du transfert et limites par ligne ;
+  - le simulateur complet compare ses captures, objets compris, aux
+    images de `test_race` ;
+  - le banc sh2cycles convertit aussi les images des objets.
+
+**Mesures** :
+- `test_race` : 11,1 objets affichés en moyenne ; le budget de tiles est
+  atteint (168) dans les vues les plus chargées, et le plan écarte alors
+  les objets les plus lointains ;
+- banc SH2, sans les objets : 67 855 cycles par CPU et par image en
+  moyenne, 75 543 au pire (20 %) ; `cost.h` à +2,2 % en moyenne ; code
+  en RAM interne : 2 036 octets sur 2 048 ;
+- simulateur : DMA jusqu'à 5 592 octets en 28 lignes de VBlank, aucune
+  ligne de sprites en surnombre ; 0,33 à 0,35 image par image d'après le
+  modèle, dont les coûts des objets sont estimés.
+
+**Ce qui reste pour plus tard** :
+- mesurer `sprites.c` au banc SH2, étalonner les deux coûts, et voir
+  combien d'objets on peut mettre à l'échelle par image ;
+- la RAM interne est pleine : `sprites.c` reste en SDRAM ; à décider
+  après la mesure ;
+- cache des tiles en VRAM (objets lointains de taille fixe), pour
+  réduire le DMA et le travail des SH2 ;
+- toujours à vérifier : DMA Mega Drive depuis $840000, bit PRI, H_INT
+  dans le HBlank.
+
+Message de commit proposé :
+
+```
+Objets du circuit mis à l'échelle par les SH2 en sprites Mega Drive
+
+Données : trois objets générés par tools/props.py (pneus, panneau,
+palmier), en trois tailles ; objets du circuit dans demo/track.txt
+(track2c), 182 sur le tour.
+
+Moteur : la projection rend position, échelle et crête de chaque
+segment ; sprites.c établit le plan (identique sur les deux CPU, budgets
+du DMA et du VDP Mega Drive) puis met les objets à l'échelle en tiles et
+entrées de la table des sprites, moitié par CPU. Le compteur occupe le
+début de la zone de transfert. Coûts des objets estimés dans cost.h.
+
+Tests : tiles et table des sprites relues comme le VDP Mega Drive,
+comparées à un rendu naïf des objets sur 5 000 images.
+```

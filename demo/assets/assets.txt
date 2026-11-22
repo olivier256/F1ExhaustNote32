@@ -1,0 +1,17 @@
+# Images converties par tools/bmp2c (voir l'en-tête de bmp2c.c).
+# type    nom          fichier
+# La palette est celle de la première image : ici, la palette Mega Drive
+# des objets (index 0 transparent, 1 à 15), commune aux trois objets.
+# Les BMP sont produits par tools/props.py (python3 tools/props.py
+# demo/assets/props) : chaque objet en trois tailles, pleine, moitié,
+# quart.
+
+sprite    tires_0      props/tires_0.bmp
+sprite    tires_1      props/tires_1.bmp
+sprite    tires_2      props/tires_2.bmp
+sprite    billboard_0  props/billboard_0.bmp
+sprite    billboard_1  props/billboard_1.bmp
+sprite    billboard_2  props/billboard_2.bmp
+sprite    palm_0       props/palm_0.bmp
+sprite    palm_1       props/palm_1.bmp
+sprite    palm_2       props/palm_2.bmp

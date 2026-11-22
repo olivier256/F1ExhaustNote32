@@ -19,6 +19,7 @@
 
 typedef struct {
     int32_t x, y, w; /* centre, hauteur et demi-largeur à l'écran, 16.16 */
+    int32_t scale;   /* pixels par unité du monde, 16.16 */
 } Projected;
 
 /* Ce que se passent les deux étapes : un état de la passe sur l'écran */
@@ -97,7 +98,8 @@ static void coverSegment(Cover *c, const Projected *near, const Projected *far,
 }
 
 void project_lines(const Track *track, const View *view, RoadLine *lines,
-                   int height, int firstLine, int lineStep, ProjectCost *cost) {
+                   int height, int firstLine, int lineStep, SegmentView *views,
+                   ProjectCost *cost) {
     const Segment *seg = track->segments;
     const uint32_t length = track_length(track);
     const uint32_t position = view->position;
@@ -118,18 +120,29 @@ void project_lines(const Track *track, const View *view, RoadLine *lines,
     int32_t curveX = 0; /* glissement latéral, 1/256 d'unité */
     int32_t curveDX = -((seg[s].curve * frac) >> SEGMENT_SHIFT);
 
-    Projected near = {0, 0, 0};
+    Projected near = {0, 0, 0, 0};
     int nearVisible = 0;
+    if (views)
+        for (int n = 0; n < DRAW_DISTANCE; n++)
+            views[n].scale = 0;
 
     for (int n = 0; n < DRAW_DISTANCE && c.clip > 0; n++) {
         const unsigned next = track_next(track, s);
+
+        /* Le début de ce segment, et la route déjà couverte devant lui */
+        if (views && nearVisible) {
+            views[n].x = near.x;
+            views[n].y = near.y;
+            views[n].scale = near.scale;
+            views[n].clip = (int16_t)c.clip;
+        }
 
         /* Début du segment suivant : à la distance z de la caméra */
         curveX += curveDX;
         curveDX += seg[s].curve;
         const int32_t z = ((n + 1) << SEGMENT_SHIFT) - frac;
 
-        Projected far = {0, 0, 0};
+        Projected far = {0, 0, 0, 0};
         const int farVisible = z > NEAR_Z;
         if (farVisible) {
             /* Échelle : pixels par unité du monde, 16.16 */
@@ -140,6 +153,7 @@ void project_lines(const Track *track, const View *view, RoadLine *lines,
             far.y = (SCREEN_CENTER_Y << 16) +
                     clamp30(mul64(cameraY - seg[next].y, scale));
             far.w = ROAD_HALF_WIDTH * scale;
+            far.scale = scale;
         }
 
         if (nearVisible && farVisible)

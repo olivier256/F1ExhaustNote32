@@ -74,6 +74,13 @@ typedef struct {
    par le banc (170 écritures dans le frame buffer, comptées à part) */
 #define CYCLES_HUD 1941
 
+/* Objets mis à l'échelle (sprites.c, SpriteCost), par CPU : ESTIMATIONS,
+   pas encore mesurées par le banc. Le plan (calculé par chaque CPU)
+   compte dans l'objet. */
+#define CYCLES_SPRITE_OBJECT 800 /* plan, table des colonnes, entrées */
+#define CYCLES_SPRITE_TILE 700   /* 64 pixels : 2 lectures et 4 décalages
+                                    chacun, 16 écritures comptées à part */
+
 static inline uint32_t cost_cycles(const ProjectCost *p, const RenderCost *r) {
     return CYCLES_FRAME + p->segments * CYCLES_SEGMENT +
            r->roadLines * CYCLES_ROAD_LINE;

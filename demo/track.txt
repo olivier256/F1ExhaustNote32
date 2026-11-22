@@ -32,3 +32,15 @@ road    30     30    30     -3   -2500
 # Remontée vers la ligne d'arrivée
 road    40     40    40      0    2500
 road     0     62     0      0       0
+
+# Objets du bord de la route : TYPE, écart au centre (négatif : à
+# gauche ; demi-largeur de la route 768), premier et dernier segment, pas
+#       type       écart  premier dernier pas
+object  billboard  -1250      4    1060   48
+object  palm        1150     12    1060   24
+object  palm       -1150     24     400   24
+object  tires        980     30     240    9
+object  tires       -980     35     240    9
+object  tires        980    440     560    8
+object  tires       -980    600     760    8
+object  palm        -1150   780    1060   20

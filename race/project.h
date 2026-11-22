@@ -39,12 +39,25 @@ typedef struct {
     uint16_t unused;
 } RoadLine;
 
+/* Ce que voit la caméra au début de chacun des DRAW_DISTANCE segments
+   devant elle (vues[n] : début du n-ième segment, n = 0 sous la caméra) :
+   de quoi y poser un objet (sprites.c). */
+typedef struct {
+    int32_t x, y;  /* centre de la route à l'écran, pixels 16.16 */
+    int32_t scale; /* pixels par unité du monde à cette distance, 16.16 ;
+                      0 : trop près, ou au-delà de ce qui a été projeté */
+    int16_t clip;  /* lignes d'écran >= clip déjà couvertes par la route
+                      plus proche : un objet posé ici y est caché */
+    int16_t unused;
+} SegmentView;
+
 /* Décrit les lignes firstLine, firstLine + lineStep... (< height) de
    l'image vue depuis 'view' ; les autres entrées de 'lines' ne sont pas
    touchées. lineStep vaut 1 ou 2 : chaque CPU décrit ses lignes, et
    obtient exactement les valeurs qu'aurait données une description de
-   tout l'écran. */
+   tout l'écran. 'views' : DRAW_DISTANCE entrées, ou NULL. */
 void project_lines(const Track *track, const View *view, RoadLine *lines,
-                   int height, int firstLine, int lineStep, ProjectCost *cost);
+                   int height, int firstLine, int lineStep, SegmentView *views,
+                   ProjectCost *cost);
 
 #endif

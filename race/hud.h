@@ -7,10 +7,10 @@
    Compteur en sprites Mega Drive : la distance parcourue sur le circuit,
    en cinq chiffres, en haut à gauche de l'écran.
 
-   C'est le premier client du chemin SH2 -> frame buffer -> DMA -> VRAM
-   -> sprites Mega Drive : le Master fabrique à chaque image les tiles
-   (4 bits par pixel) et les entrées de la table des sprites, dans la zone
-   de transfert du frame buffer (shared.h). Les chiffres changent à chaque
+   Le Master fabrique à chaque image ses tiles (4 bits par pixel) et ses
+   entrées de la table des sprites, au début de la zone de transfert du
+   frame buffer (shared.h) : les tiles 0 à HUD_TILES - 1, les entrées 0 et
+   1 ; les objets (sprites.c) suivent. Les chiffres changent à chaque
    image : tout repart par le DMA, à chaque VBlank.
 
    Deux sprites : 4 x 2 cellules (les chiffres 1 à 4) et 1 x 2 (le
@@ -20,6 +20,8 @@
    ========================================================================= */
 
 #define HUD_DIGITS 5
+#define HUD_TILES (HUD_DIGITS * 2)
+#define HUD_ENTRIES 2
 #define HUD_X 16 /* coin haut gauche, à l'écran */
 #define HUD_Y 12
 #define HUD_COLOR_DIGIT 1
@@ -38,8 +40,11 @@ static inline uint32_t hud_value(uint32_t position) { return position >> 4; }
 uint8_t hud_digit_pixel(unsigned digit, int x, int y);
 
 /* Écrit dans la zone de transfert du frame buffer de dessin les tiles et
-   les entrées de la table des sprites du compteur. Renvoie le nombre
-   d'octets que le DMA transférera. */
-uint32_t hud_build(uint32_t position);
+   les entrées de la table des sprites du compteur. stageTiles et
+   stageEntries : tiles et entrées de toute la zone de transfert (les
+   entrées suivent les tiles ; si d'autres entrées suivent celles du
+   compteur, la seconde y est chaînée). Renvoie les octets du compteur. */
+uint32_t hud_build(uint32_t position, unsigned stageTiles,
+                   unsigned stageEntries);
 
 #endif

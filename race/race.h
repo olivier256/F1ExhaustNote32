@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "sprites.h"
 #include "world.h"
 
 /* =========================================================================
@@ -15,7 +16,10 @@
      table de lignes du VDP : chaque ligne d'écran montre l'une des lignes
      de route préparées au démarrage (render.h). Le Master écrit au HBlank
      le décalage d'écran et les couleurs claires ou sombres de la ligne
-     suivante.
+     suivante ;
+   - les objets du bord de la route sont mis à l'échelle par les deux SH2
+     en sprites Mega Drive (sprites.h), que le 68000 transfère pendant le
+     VBlank.
 
    Le moteur fournit les points d'entrée des SH2 (master_main, slave_main
    et leurs interruptions, voir pixel/game.h). Le programme qui l'utilise
@@ -23,7 +27,9 @@
    ========================================================================= */
 
 typedef struct {
-    const Track *track; /* le circuit */
+    const Track *track;     /* le circuit, et ses objets */
+    const PropKind *props;  /* types d'objets (TrackObject.kind) */
+    int propCount;
 } RaceContent;
 
 /* Fourni par le programme : ce que le moteur affiche */

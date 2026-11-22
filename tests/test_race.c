@@ -19,10 +19,15 @@
       d'une projection de tout l'écran, et l'image, identique au rendu
       naïf ; 224 écritures par image. La dernière ligne de l'écran doit
       toujours montrer la route (rien ne manque sous la voiture).
-   3. Le compteur en sprites Mega Drive : hud_build écrit tiles et
-      entrées de la table des sprites dans la zone de transfert ; le test
-      les relit comme le VDP Mega Drive (écrit indépendamment de
-      pixel/mdvdp.c) et compare aux chiffres dessinés directement.
+   3. Les sprites Mega Drive : le compteur (hud_build), puis les objets
+      du circuit (sprites_plan, sprites_draw pour les deux CPU) sur la
+      trajectoire de la démo et des vues au hasard. Le test relit tiles et
+      table des sprites de la zone de transfert comme le VDP Mega Drive
+      (écrit indépendamment de pixel/mdvdp.c), et compare à un rendu
+      naïf : les chiffres dessinés directement, et chaque objet du plan,
+      pixel par pixel, le plus proche devant. Le plan doit être le même
+      quel que soit le CPU qui le calcule (vues de ses seules lignes), et
+      tenir dans les budgets (DMA, sprites et pixels par ligne).
    4. Avec --ppm : l'image de référence d'un scénario du simulateur
       complet (tests/run_tests.sh).
       test_race --ppm IMAGES [--pad DEBUT-FIN:BOUTONS]... fichier.ppm
@@ -53,7 +58,10 @@
 #include "race.h"
 #include "render.h"
 #include "shared.h"
+#include "sprites.h"
 #include "vdp.h"
+
+#include "demo_assets.h" /* palette des objets, pour les images de référence */
 
 #define SCREEN_HEIGHT 224
 
@@ -251,7 +259,7 @@ static unsigned long frames = 0, darkChanges = 0;
 static void checkFrame(const View *v) {
     const Track *t = race_content.track;
 
-    project_lines(t, v, allLines, SCREEN_HEIGHT, 0, 1, &(ProjectCost){0});
+    project_lines(t, v, allLines, SCREEN_HEIGHT, 0, 1, NULL, &(ProjectCost){0});
     if (allLines[SCREEN_HEIGHT - 1].type != LINE_ROAD)
         fail("route sous la voiture", SCREEN_HEIGHT - 1, -1, 0, 1);
 
@@ -260,7 +268,7 @@ static void checkFrame(const View *v) {
         ProjectCost pc = {0};
         RenderCost rc = {0};
         project_lines(t, v, cpuLines[cpu], SCREEN_HEIGHT, cpu,
-                      PLATFORM_CPU_COUNT, &pc);
+                      PLATFORM_CPU_COUNT, NULL, &pc);
         for (int y = cpu; y < SCREEN_HEIGHT; y += PLATFORM_CPU_COUNT) {
             const RoadLine *a = &cpuLines[cpu][y], *b = &allLines[y];
             if (a->type != b->type || a->flags != b->flags ||
@@ -362,6 +370,7 @@ static void readStagedSprites(void) {
         const int x = (fbWord(e + 6) & 0x1FF) - 128;
         const int w = ((sl >> 10) & 3) + 1, h = ((sl >> 8) & 3) + 1;
         const unsigned tile = (attr & 0x7FF) - MD_SH2_FIRST_TILE;
+        const int palette = (attr >> 13) & 3;
         for (int r = 0; r < h * 8; r++)
             for (int c = 0; c < w * 8; c++) {
                 const unsigned t = tile + (unsigned)(c / 8 * h + r / 8);
@@ -370,7 +379,7 @@ static void readStagedSprites(void) {
                 const int p = (c % 2) ? (b & 15) : (b >> 4);
                 if (p && y + r >= 0 && y + r < SCREEN_HEIGHT && x + c >= 0 &&
                     x + c < SCREEN_WIDTH && mdIndex[y + r][x + c] == 0)
-                    mdIndex[y + r][x + c] = (uint8_t)p;
+                    mdIndex[y + r][x + c] = (uint8_t)(palette * 16 + p);
             }
         seen++;
         entry = sl & 0x7F;
@@ -401,7 +410,12 @@ static void testHud(void) {
         const uint32_t position = i < 10000 ? (uint32_t)i * 16 + (i & 15)
                                             : rnd() % (99999u * 16 + 2000);
         const unsigned long before = writes;
-        const uint32_t bytes = hud_build(position);
+        SpritePlan hudOnly;
+        memset(&hudOnly, 0, sizeof hudOnly);
+        hudOnly.tiles = HUD_TILES;
+        hudOnly.entries = HUD_ENTRIES;
+        const uint32_t bytes = hud_build(position, HUD_TILES, HUD_ENTRIES);
+        sprites_write_header(&hudOnly);
         if (bytes > MD_STAGE_MAX_BYTES ||
             MD_STAGE_OFFSET + MD_STAGE_HEADER + bytes > VDP_DRAM_SIZE)
             fail("taille du transfert", -1, -1, (long)bytes,
@@ -422,10 +436,140 @@ static void testHud(void) {
     }
     printf("compteur : %lu valeurs verifiees, %u octets par image a "
            "transferer\n",
-           checked, (unsigned)hud_build(0));
+           checked, (unsigned)hud_build(0, HUD_TILES, HUD_ENTRIES));
+}
+
+/* Les objets du plan, dessinés directement : index de couleur (palette
+   1) du pixel (x, y), du plus proche au plus lointain, 0 si aucun */
+static uint8_t refObjects(const SpritePlan *plan, int x, int y) {
+    for (int i = 0; i < plan->count; i++) {
+        const PlacedObject *o = &plan->objects[i];
+        if (x < o->x || x >= o->x + o->w || y < o->y ||
+            y >= o->y + o->visibleH)
+            continue;
+        const Bitmap *b = race_content.props[o->kind].mips[o->mip];
+        const unsigned sx = (unsigned)(((uint64_t)(x - o->x) * o->stepX) >> 16);
+        const unsigned sy = (unsigned)(((uint64_t)(y - o->y) * o->stepY) >> 16);
+        if (sx >= b->width || sy >= b->height) {
+            fail("pixel source hors de l'image", y, x, (long)sx, b->width);
+            return 0;
+        }
+        const uint8_t p = b->pixels[sy * b->width + sx];
+        if (p)
+            return (uint8_t)(16 + p);
+    }
+    return 0;
+}
+
+/* Index Mega Drive attendu au pixel (x, y) : le compteur devant, puis les
+   objets */
+static uint8_t refMegaDrive(uint32_t position, const SpritePlan *plan, int x,
+                            int y) {
+    const uint8_t h = refHud(position, x, y);
+    return h ? h : refObjects(plan, x, y);
+}
+
+static SegmentView views[2][DRAW_DISTANCE];
+static SpritePlan plans[2];
+static unsigned long objectsShown = 0, planFrames = 0, maxTiles = 0;
+
+/* Plan et dessin d'une image, comme race.c (les deux CPU) */
+static const SpritePlan *stageFrame(const View *v) {
+    const Track *t = race_content.track;
+    for (int cpu = 0; cpu < 2; cpu++)
+        project_lines(t, v, cpuLines[cpu], SCREEN_HEIGHT, cpu, 2, views[cpu],
+                      &(ProjectCost){0});
+    if (memcmp(views[0], views[1], sizeof views[0]) != 0)
+        fail("vues des segments par CPU", -1, -1, 0, 0);
+    for (int cpu = 0; cpu < 2; cpu++)
+        sprites_plan(t, race_content.props, v, views[cpu], &plans[cpu]);
+    if (memcmp(&plans[0], &plans[1], sizeof plans[0]) != 0)
+        fail("plan des objets par CPU", -1, -1, 0, 0);
+    const SpritePlan *plan = &plans[0];
+    for (int cpu = 0; cpu < 2; cpu++)
+        sprites_draw(plan, race_content.props, cpu, &(SpriteCost){0, 0});
+    hud_build(v->position, plan->tiles, plan->entries);
+    sprites_write_header(plan);
+    return plan;
+}
+
+static void checkObjects(const View *v) {
+    const SpritePlan *plan = stageFrame(v);
+    const uint32_t bytes =
+        MD_STAGE_HEADER + plan->tiles * 32u + plan->entries * 8u;
+    if (bytes > MD_STAGE_MAX_BYTES || plan->tiles > MD_STAGE_MAX_TILES ||
+        plan->entries > MD_STAGE_MAX_ENTRIES)
+        fail("budget du transfert", -1, -1, (long)bytes, MD_STAGE_MAX_BYTES);
+
+    readStagedSprites();
+    for (int y = 0; y < SCREEN_HEIGHT; y++)
+        for (int x = 0; x < SCREEN_WIDTH; x++) {
+            const uint8_t want = refMegaDrive(v->position, plan, x, y);
+            if (mdIndex[y][x] != want) {
+                fail("objets", y, x, mdIndex[y][x], want);
+                y = SCREEN_HEIGHT;
+                break;
+            }
+        }
+
+    /* Sprites et pixels par ligne (ce que le VDP Mega Drive afficherait
+       sans rien perdre), d'après la table relue */
+    int sprites[SCREEN_HEIGHT] = {0}, pixels[SCREEN_HEIGHT] = {0};
+    const uint32_t table =
+        MD_STAGE_OFFSET + MD_STAGE_HEADER + fbWord(MD_STAGE_OFFSET);
+    for (unsigned e = 0; e < plan->entries; e++) {
+        const int y = (fbWord(table + e * 8) & 0x3FF) - 128;
+        const uint16_t sl = fbWord(table + e * 8 + 2);
+        for (int r = 0; r < (((sl >> 8) & 3) + 1) * 8; r++)
+            if (y + r >= 0 && y + r < SCREEN_HEIGHT) {
+                sprites[y + r]++;
+                pixels[y + r] += (((sl >> 10) & 3) + 1) * 8;
+            }
+    }
+    for (int y = 0; y < SCREEN_HEIGHT; y++)
+        if (sprites[y] > MD_SPRITES_PER_LINE ||
+            pixels[y] > MD_SPRITE_PIXELS_PER_LINE)
+            fail("sprites par ligne", y, -1, sprites[y], pixels[y]);
+
+    objectsShown += (unsigned long)plan->count;
+    if (plan->tiles > maxTiles)
+        maxTiles = plan->tiles;
+    planFrames++;
+}
+
+static void testObjects(void) {
+    const Track *t = race_content.track;
+    padCount = 0;
+    for (currentFrame = 0; currentFrame < 3000; currentFrame++) {
+        md_vint();
+        View v = viewFromComm();
+        checkObjects(&v);
+    }
+    for (int i = 0; i < 2000; i++) {
+        View v;
+        v.position = rnd() % track_length(t);
+        v.playerX = (int16_t)rndRange(-1200, 1200);
+        checkObjects(&v);
+    }
+    printf("objets : %lu images verifiees, %.1f objets affiches en moyenne, "
+           "%lu tiles au plus (sur %d)\n",
+           planFrames, (double)objectsShown / planFrames, maxTiles,
+           MD_STAGE_MAX_TILES);
 }
 
 /* ---- 4. Image de référence d'un scénario ------------------------------- */
+
+/* Couleur de la CRAM écrite par le programme 68000 : palette 0, le
+   compteur ; palette 1, les objets (palette des BMP ramenée à 3 bits) */
+static uint16_t mdColor(uint8_t index) {
+    if (index == HUD_COLOR_DIGIT)
+        return HUD_CRAM_DIGIT;
+    if (index == HUD_COLOR_BACK)
+        return HUD_CRAM_BACK;
+    const uint16_t c = asset_palette[index - 16];
+    return (uint16_t)(((c >> 12) & 7) << 9 | ((c >> 7) & 7) << 5 |
+                      ((c >> 2) & 7) << 1);
+}
 
 /* Couleur Mega Drive -> 0x00RRGGBB, comme le simulateur (mdvdp.c) */
 static uint32_t mdRgb(uint16_t color) {
@@ -508,7 +652,9 @@ static int writeReference(int argc, char *argv[]) {
         md_vint();
     const View v = viewFromComm();
     project_lines(race_content.track, &v, allLines, SCREEN_HEIGHT, 0, 1,
-                  &(ProjectCost){0});
+                  views[0], &(ProjectCost){0});
+    sprites_plan(race_content.track, race_content.props, &v, views[0],
+                 &plans[0]);
 
     FILE *f = fopen(argv[i], "wb");
     if (f == NULL) {
@@ -520,9 +666,8 @@ static int writeReference(int argc, char *argv[]) {
         ShownLine l;
         refLine(&allLines[y], y, &l);
         for (int px = 0; px < SCREEN_WIDTH; px++) {
-            const uint8_t md = refHud(v.position, px, y);
-            const uint32_t c = md ? mdRgb(md == HUD_COLOR_DIGIT ? HUD_CRAM_DIGIT
-                                                                : HUD_CRAM_BACK)
+            const uint8_t md = refMegaDrive(v.position, &plans[0], px, y);
+            const uint32_t c = md ? mdRgb(mdColor(md))
                                   : rgbOf(colorOf(l.index[px], l.dark));
             const uint8_t rgb[3] = {(uint8_t)(c >> 16), (uint8_t)(c >> 8),
                                     (uint8_t)c};
@@ -558,6 +703,7 @@ int main(int argc, char *argv[]) {
     testLines();
     testFrames();
     testHud();
+    testObjects();
 
     if (failures) {
         printf("%lu echecs\n", failures);

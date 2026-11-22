@@ -58,9 +58,11 @@ et se place à l'intérieur des virages qui arrivent.
 | Start maintenu   | Entrée   | pause                                   |
 
 En haut à gauche, un compteur en sprites Mega Drive : la distance
-parcourue. Pas encore d'objets sur le circuit (voiture, adversaires,
-décor du bord de la route), et le haut de l'écran n'est qu'un ciel en
-dégradé : ils viendront des sprites et des plans de la Mega Drive.
+parcourue. Au bord de la route, des piles de pneus, des palmiers et des
+panneaux publicitaires (182 objets sur le tour), mis à l'échelle par les
+SH2 et affichés en sprites Mega Drive. Pas encore de voiture ni
+d'adversaires, et le haut de l'écran n'est qu'un ciel en dégradé : ils
+viendront des sprites et des plans de la Mega Drive.
 
 ## Registres COMM
 
@@ -163,6 +165,33 @@ SH2 commencent à la dixième. Les sprites Mega Drive sont devant la route
 (bit PRI du 32X). Le compteur (`hud.c`) est le premier client de ce
 chemin : cinq chiffres refaits à chaque image, 336 octets de DMA.
 
+**Les objets du circuit** (`race/sprites.c`, preuve de concept). Le
+circuit porte des objets (`object TYPE X PREMIER DERNIER PAS` dans
+`demo/track.txt`) ; chaque type existe en trois tailles (pleine, moitié,
+quart), faites par `tools/props.py`. La projection rend, pour chaque
+segment, sa position, son échelle et la ligne de crête déjà couverte
+devant lui (`SegmentView`). À chaque image :
+1. le plan (`sprites_plan`), calculé à l'identique par les deux CPU :
+   les objets visibles du plus proche au plus lointain (12 au plus), leur
+   rectangle à l'écran, la crête qui les coupe, la plus petite taille
+   source au moins aussi large que l'objet à l'écran, leurs tiles et
+   leurs entrées dans la zone de transfert. Un objet n'est pris que si
+   tout tient : 168 tiles et 68 entrées (le DMA du VBlank, 6 Ko), et
+   20 sprites et 320 pixels de sprites par ligne ;
+2. la mise à l'échelle (`sprites_draw`) : le Master fabrique les objets
+   de rang pair, le Slave ceux de rang impair, en tiles Mega Drive
+   (cellules de 8 x 8, rangées en colonnes), par colonnes et lignes
+   répétées ou omises (pas en 16.16), comme sur Neo Geo ;
+3. le Master écrit le compteur et l'en-tête de la zone de transfert.
+
+Les images sources sont recopiées de la ROM vers la SDRAM au démarrage
+(16 Ko au plus). Les objets utilisent la palette 1 de la Mega Drive,
+écrite par le 68000 depuis la palette des BMP. Le coût dans `cost.h`
+(`CYCLES_SPRITE_OBJECT`, `CYCLES_SPRITE_TILE`) est encore une
+estimation : la mesure, et le nombre d'objets que l'on peut mettre à
+l'échelle, sont l'étape suivante. Pas encore de cache des tiles en VRAM :
+tout est refait à chaque image.
+
 **Le partage du travail.** Chaque CPU projette lui-même le circuit pour
 ses seules lignes (paires pour le Master, impaires pour le Slave), et
 obtient exactement les valeurs d'une projection de tout l'écran : aucun
@@ -177,8 +206,10 @@ justifie.
 
 **Code et cache.** Le moteur suppose le cache du SH2 en mode « 2 voies +
 RAM » : le code de chaque image (`project.c`, `render_line`, `hud.c`,
-1 972 octets) dans les 2 Ko de RAM interne ; la préparation des lignes,
-faite une fois, en SDRAM (section `.text.sdram`).
+2 036 octets) dans les 2 Ko de RAM interne ; le code froid (préparation
+des lignes, fonctions des tests ; macro `COLD_CODE` de `fixed.h`) en
+SDRAM (section `.text.sdram`). La RAM interne est pleine : `sprites.c`
+reste en SDRAM pour l'instant.
 
 ## Le simulateur
 
@@ -255,8 +286,14 @@ statistiques disent ce que ferait la vraie machine.
    projection de chaque CPU (une ligne sur deux) doit donner exactement
    celle de tout l'écran, l'image être identique au rendu naïf, 224
    écritures par image, et la route toujours visible en bas de l'écran.
-   Enfin le compteur : 20 000 valeurs, tiles et table des sprites relues
+   Puis le compteur : 20 000 valeurs, tiles et table des sprites relues
    comme le VDP Mega Drive, comparées aux chiffres dessinés directement.
+   Enfin les objets : 5 000 images (trajectoire de la démo et vues au
+   hasard). Le plan doit être le même pour les deux CPU ; tiles et table
+   des sprites, fabriquées par les deux, relues comme le VDP Mega Drive,
+   doivent donner pixel pour pixel un rendu naïf de chaque objet (le plus
+   proche devant) ; le transfert doit tenir dans son budget, et chaque
+   ligne dans les limites du VDP (20 sprites, 320 pixels).
 2. Le simulateur complet sans fenêtre (H_INT comprises) : la manette suit
    un scénario qui met la démo en pause avant chaque capture, et l'image
    capturée doit être identique, octet pour octet, à celle que
@@ -270,8 +307,11 @@ statistiques disent ce que ferait la vraie machine.
 
 - Le circuit : `demo/track.txt`, converti par `tools/track2c`.
 - Les couleurs (ciel, route claire et sombre) : `race/render.c`.
-- `tools/bmp2c` (images BMP 8 bits → C) reste construit, pour les
-  sprites et les plans à venir ; la démo n'a pas d'image pour l'instant.
+- Les objets : `demo/assets/props/*.bmp` (trois tailles par type),
+  produits par `tools/props.py` (Python 3, sans dépendance), listés dans
+  `demo/assets/assets.txt` et convertis par `tools/bmp2c` ; leurs
+  tailles dans le monde dans `demo/content.c`. 15 couleurs communes,
+  l'index 0 transparent (magenta dans les BMP).
 
 ## Organisation
 
@@ -283,11 +323,13 @@ statistiques disent ce que ferait la vraie machine.
 | `race/project.c`        | projection : description de chaque ligne d'écran       |
 | `race/render.c`         | lignes préparées, choix d'une ligne (table, SFT, bande) |
 | `race/hud.c`            | compteur en sprites Mega Drive (tiles, table des sprites) |
+| `race/sprites.c`        | objets du circuit : plan, mise à l'échelle en sprites Mega Drive |
 | `race/cost.h`           | modèle de coûts (cycles estimés)                       |
 | `race/shared.h`         | registres COMM, scène partagée, accès sans cache       |
 | `demo/`                 | circuit et programme 68000 de la démo                  |
 | `tools/bmp2c.c`         | convertisseur BMP → C                                  |
-| `tools/track2c.c`       | convertisseur circuit → C                              |
+| `tools/track2c.c`       | convertisseur circuit (segments, objets) → C           |
+| `tools/props.py`        | générateur des images des objets et de leurs tailles réduites |
 | `tests/`                | tests                                                  |
 | `tools/sh2cycles/`      | banc SH2 sous qemu : temps du code compilé, étalonnage de `cost.h` |
 

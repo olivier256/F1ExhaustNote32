@@ -1,5 +1,6 @@
 #include "hud.h"
 
+#include "fixed.h"
 #include "shared.h"
 #include "vdp.h"
 
@@ -20,7 +21,8 @@ static const uint8_t font3x5[10][5] = {
 };
 static const uint8_t columnMask[3] = {4, 2, 1};
 
-uint8_t hud_digit_pixel(unsigned digit, int x, int y) {
+/* Pour les tests : code froid */
+COLD_CODE uint8_t hud_digit_pixel(unsigned digit, int x, int y) {
     /* Chaque pixel de la police fait 2 x 2 ; marge de 1 à gauche, 3 en
        haut : le chiffre occupe x de 1 à 6, y de 3 à 12 */
     const int gx = (x - 1) >> 1, gy = (y - 3) >> 1;
@@ -76,7 +78,8 @@ static void initRowPatterns(void) {
     rowPatternReady = 1;
 }
 
-uint32_t hud_build(uint32_t position) {
+uint32_t hud_build(uint32_t position, unsigned stageTiles,
+                   unsigned stageEntries) {
     if (!rowPatternReady)
         initRowPatterns();
     uint8_t digits[HUD_DIGITS];
@@ -100,12 +103,14 @@ uint32_t hud_build(uint32_t position) {
     }
     const uint32_t tileBytes = (uint32_t)HUD_DIGITS * 2 * 32;
 
-    /* Deux sprites : chiffres 1 à 4, puis le cinquième */
+    /* Deux sprites : chiffres 1 à 4, puis le cinquième, chaîné à la suite
+       s'il y en a une */
     const unsigned first = MD_RESERVED_SPRITES;
-    writeSprite(o, HUD_X, HUD_Y, 4, 2, first + 1, MD_SH2_FIRST_TILE);
-    writeSprite(o + 8, HUD_X + 32, HUD_Y, 1, 2, 0, MD_SH2_FIRST_TILE + 8);
-
-    vdp_dram_write16(MD_STAGE_OFFSET, (uint16_t)tileBytes);
-    vdp_dram_write16(MD_STAGE_OFFSET + 2, 2);
-    return tileBytes + 2 * 8;
+    const uint32_t entries =
+        MD_STAGE_OFFSET + MD_STAGE_HEADER + stageTiles * 32u;
+    writeSprite(entries, HUD_X, HUD_Y, 4, 2, first + 1, MD_SH2_FIRST_TILE);
+    writeSprite(entries + 8, HUD_X + 32, HUD_Y, 1, 2,
+                stageEntries > HUD_ENTRIES ? first + HUD_ENTRIES : 0,
+                MD_SH2_FIRST_TILE + 8);
+    return tileBytes + HUD_ENTRIES * 8;
 }

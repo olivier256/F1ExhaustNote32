@@ -19,6 +19,15 @@
    addRoad). Le circuit boucle : il doit revenir à la hauteur 0, où il
    commence.
 
+   Objets du bord de la route :
+       object  TYPE  X  PREMIER  DERNIER  PAS
+   - TYPE : tires, billboard ou palm (index 0, 1, 2 des objets du
+     contenu, voir race/race.h) ;
+   - X : écart au centre de la route, en unités du monde (négatif : à
+     gauche ; la route a une demi-largeur de 768) ;
+   - un objet tous les PAS segments, du segment PREMIER au segment
+     DERNIER compris.
+
    Outil de l'hôte : il calcule en flottants (cos), le moteur ne reçoit
    que des entiers.
    ========================================================================= */
@@ -36,6 +45,13 @@
 static double heights[MAX_SEGMENTS + 1]; /* début de chaque segment */
 static double curves[MAX_SEGMENTS];
 static int count = 0;
+
+#define MAX_OBJECTS 4096
+static struct {
+    int segment, x, kind;
+} objects[MAX_OBJECTS];
+static int objectCount = 0;
+static const char *kindNames[] = {"tires", "billboard", "palm"};
 
 static void fail(const char *fmt, const char *arg, int line) {
     fprintf(stderr, "track2c : ");
@@ -97,6 +113,30 @@ static void readDescription(const char *path) {
         char kind[16];
         int enter, hold, leave;
         double curve, rise;
+        char object[16];
+        int x, first, last, step;
+        if (sscanf(text, "%15s", kind) == 1 && strcmp(kind, "object") == 0) {
+            if (sscanf(text, "%15s %15s %d %d %d %d", kind, object, &x, &first,
+                       &last, &step) != 6 ||
+                step <= 0 || first < 0 || last < first)
+                fail("%s : 'object TYPE X PREMIER DERNIER PAS' attendu", path,
+                     line);
+            int k = 0;
+            while (k < 3 && strcmp(object, kindNames[k]) != 0)
+                k++;
+            if (k == 3)
+                fail("%s : type d'objet inconnu (tires, billboard, palm)", path,
+                     line);
+            for (int sgt = first; sgt <= last; sgt += step) {
+                if (objectCount == MAX_OBJECTS)
+                    fail("%s : trop d'objets", path, line);
+                objects[objectCount].segment = sgt;
+                objects[objectCount].x = x;
+                objects[objectCount].kind = k;
+                objectCount++;
+            }
+            continue;
+        }
         int n = sscanf(text, "%15s %d %d %d %lf %lf", kind, &enter, &hold,
                        &leave, &curve, &rise);
         if (n <= 0)
@@ -114,6 +154,16 @@ static void readDescription(const char *path) {
         fail("%s : circuit plus court que la distance de vue", path, 0);
     if (fabs(heights[count]) > 0.5)
         fail("%s : le circuit ne revient pas à la hauteur 0", path, 0);
+    for (int i = 0; i < objectCount; i++)
+        if (objects[i].segment >= count)
+            fail("%s : objet au-delà du dernier segment", path, 0);
+}
+
+/* Tri des objets : par segment, puis dans l'ordre de déclaration (le
+   champ segment vaut segment x MAX_OBJECTS + rang pendant le tri) */
+static int compareObjects(const void *a, const void *b) {
+    const int sa = *(const int *)a, sb = *(const int *)b;
+    return (sa > sb) - (sa < sb);
 }
 
 static void writeOutput(const char *base, const char *path, const char *name) {
@@ -147,7 +197,21 @@ static void writeOutput(const char *base, const char *path, const char *name) {
         fprintf(c, "    {%ld, %ld, %s, 0},\n", y, curve,
                 dark ? "SEGMENT_DARK" : "0");
     }
-    fprintf(c, "};\n\nconst Track %s = {%d, segments};\n", name, count);
+    fprintf(c, "};\n\n");
+
+    for (int i = 0; i < objectCount; i++)
+        objects[i].segment = objects[i].segment * MAX_OBJECTS + i;
+    qsort(objects, (size_t)objectCount, sizeof objects[0], compareObjects);
+    fprintf(c, "/* segment, x, type */\n");
+    fprintf(c, "static const TrackObject objects[%d] = {\n",
+            objectCount > 0 ? objectCount : 1);
+    for (int i = 0; i < objectCount; i++)
+        fprintf(c, "    {%d, %d, %d, 0},\n", objects[i].segment / MAX_OBJECTS,
+                objects[i].x, objects[i].kind);
+    if (objectCount == 0)
+        fprintf(c, "    {0, 0, 0, 0},\n");
+    fprintf(c, "};\n\nconst Track %s = {%d, segments, %d, objects};\n", name,
+            count, objectCount);
     fclose(c);
 }
 
@@ -159,7 +223,8 @@ int main(int argc, char *argv[]) {
     }
     readDescription(argv[1]);
     writeOutput(argv[2], argv[1], argv[3]);
-    fprintf(stderr, "track2c : %d segments (%d unités) -> %s.c / %s.h\n", count,
-            count * SEGMENT_LENGTH, argv[2], argv[2]);
+    fprintf(stderr,
+            "track2c : %d segments (%d unités), %d objets -> %s.c / %s.h\n",
+            count, count * SEGMENT_LENGTH, objectCount, argv[2], argv[2]);
     return 0;
 }

@@ -39,4 +39,15 @@ static inline int32_t clamp30(int64_t v) {
    SH2 décalent les entiers signés en gardant le signe) */
 static inline int ceil16(int32_t v) { return (v + 0xFFFF) >> 16; }
 
+/* Code froid : ce qui ne sert pas à chaque image (la préparation des
+   lignes au démarrage, les fonctions des tests). Sur SH2, il est rangé à
+   part (section .text.sdram) : l'édition de liens le laisse en SDRAM, et
+   réserve la RAM interne au code de chaque image (voir
+   tools/sh2cycles/bench_ram.ld). */
+#if defined(__sh__)
+#define COLD_CODE __attribute__((noinline, section(".text.sdram")))
+#else
+#define COLD_CODE __attribute__((noinline))
+#endif
+
 #endif

@@ -4,16 +4,6 @@
 #include "framebuffer.h"
 #include "vdp.h"
 
-/* Code froid : la préparation des lignes, faite une fois au démarrage.
-   Sur SH2, il est rangé à part (section .text.sdram) : l'édition de liens
-   le laisse en SDRAM, et réserve la RAM interne au code de chaque image
-   (projection et choix des lignes ; voir tools/sh2cycles/bench_ram.ld). */
-#if defined(__sh__)
-#define COLD_CODE __attribute__((noinline, section(".text.sdram")))
-#else
-#define COLD_CODE __attribute__((noinline))
-#endif
-
 /* Couleur 32X d'après ses composantes sur 8 bits */
 #define RGB5(r, g, b) (((r) >> 3) | (((g) >> 3) << 5) | (((b) >> 3) << 10))
 

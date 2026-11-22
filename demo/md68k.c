@@ -38,6 +38,7 @@
 #include "shared.h"
 #include "world.h"
 
+#include "demo_assets.h"
 #include "demo_track.h"
 #include "hud.h"
 
@@ -105,6 +106,14 @@ static void initVDP(void) {
     md_vdp_set_sprite_table(MD_SPRITE_TABLE);
     md_vdp_write_cram(HUD_COLOR_DIGIT, HUD_CRAM_DIGIT); /* compteur */
     md_vdp_write_cram(HUD_COLOR_BACK, HUD_CRAM_BACK);
+    /* Palette 1 : les objets (palette des BMP, au format 32X, 5 bits par
+       composante ; ramenée aux 3 bits de la Mega Drive) */
+    for (int i = 1; i < 16; i++) {
+        const uint16_t c = asset_palette[i];
+        md_vdp_write_cram(16 + i, (uint16_t)(((c >> 12) & 7) << 9 |
+                                             ((c >> 7) & 7) << 5 |
+                                             ((c >> 2) & 7) << 1));
+    }
     /* Entrées réservées : hors de l'écran, chaînées jusqu'à la première
        entrée des SH2 */
     for (unsigned i = 0; i < MD_RESERVED_SPRITES; i++) {

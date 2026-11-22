@@ -73,6 +73,7 @@
 #include "project.h"
 #include "render.h"
 #include "shared.h"
+#include "sprites.h"
 #include "vdp.h"
 
 /* Scène de l'image en cours, publiée par le Master (voir shared.h) */
@@ -91,6 +92,13 @@ static RoadLine roadLines[PLATFORM_CPU_COUNT][MAX_LINES];
 
 /* Plan des lignes préparées, calculé par chaque CPU (le même) */
 static RoadLayout layouts[PLATFORM_CPU_COUNT];
+
+/* Objets : leurs images en SDRAM (recopiées par le Master au démarrage),
+   et, par CPU, les vues des segments et le plan de l'image (le même pour
+   les deux CPU, calculé par chacun) */
+static const PropKind *volatile props;
+static SegmentView segmentViews[PLATFORM_CPU_COUNT][DRAW_DISTANCE];
+static SpritePlan spritePlans[PLATFORM_CPU_COUNT];
 
 /* État des interruptions du Master */
 static int screenLines;                         /* lignes affichées */
@@ -240,6 +248,7 @@ static void initVDP(int screenHeight) {
        test_race) : sinon, on reste en mode Blank, écran noir. */
     const RoadLayout *layout = &layouts[PLATFORM_CPU_MASTER];
     render_layout(&layouts[PLATFORM_CPU_MASTER]);
+    props = sprites_init(race_content.props, race_content.propCount);
     if (layout->end > MD_STAGE_OFFSET)
         return; /* la zone de transfert vers la Mega Drive serait écrasée */
     for (int fb = 0; fb < 2; fb++) {
@@ -294,6 +303,7 @@ static void drawScene(const Scene *scene, int cpu, int screenHeight) {
     const RaceContent *c = &race_content;
     ProjectCost projectCost = {0};
     RenderCost renderCost = {0};
+    SpriteCost spriteCost = {0};
 
     const int height = screenHeight < MAX_LINES ? screenHeight : MAX_LINES;
     RoadLine *lines = roadLines[cpu];
@@ -302,20 +312,28 @@ static void drawScene(const Scene *scene, int cpu, int screenHeight) {
 
     /* Master : lignes paires, Slave : impaires */
     project_lines(c->track, &scene->view, lines, height, cpu,
-                  PLATFORM_CPU_COUNT, &projectCost);
+                  PLATFORM_CPU_COUNT, segmentViews[cpu], &projectCost);
     for (int y = cpu; y < height; y += PLATFORM_CPU_COUNT)
         attributes[y] = (uint8_t)render_line(y, &lines[y], layout, &renderCost);
 
-    /* Les sprites Mega Drive : pour l'instant, le compteur (Master) */
-    if (cpu == PLATFORM_CPU_MASTER)
-        hud_build(scene->view.position);
+    /* Les sprites Mega Drive : les objets, la moitié par CPU, selon un
+       plan que les deux calculent de la même façon ; le Master ajoute le
+       compteur et l'en-tête de la zone de transfert */
+    SpritePlan *plan = &spritePlans[cpu];
+    sprites_plan(c->track, props, &scene->view, segmentViews[cpu], plan);
+    sprites_draw(plan, props, cpu, &spriteCost);
+    if (cpu == PLATFORM_CPU_MASTER) {
+        hud_build(scene->view.position, plan->tiles, plan->entries);
+        sprites_write_header(plan);
+    }
 
 #if RACE_COST_ENABLED && !defined(__sh__)
     /* Outil du simulateur : estimation déclarée pour cette image. Le
        Master paie en plus ses interruptions (une H_INT par ligne et une
        V_INT, et les changements de couleurs de l'image précédente),
        estimées. */
-    uint32_t cycles = cost_cycles(&projectCost, &renderCost);
+    uint32_t cycles = cost_cycles(&projectCost, &renderCost) +
+                      sprite_cycles(&spriteCost);
     if (cpu == PLATFORM_CPU_MASTER) {
         cycles += (uint32_t)(screenHeight + 1) * CYCLES_INTERRUPT;
         cycles += paletteSwaps * CYCLES_PALETTE_SWAP + CYCLES_HUD;
@@ -325,6 +343,7 @@ static void drawScene(const Scene *scene, int cpu, int screenHeight) {
 #else
     (void)projectCost;
     (void)renderCost;
+    (void)spriteCost;
 #endif
 }
 

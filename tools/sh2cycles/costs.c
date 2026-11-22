@@ -46,13 +46,16 @@ int main(int argc, char *argv[]) {
         ProjectCost p = {0};
         RenderCost r = {0};
         unsigned attributes[BENCH_SCREEN_HEIGHT] = {0};
-        project_lines(c->track, &v, lines, BENCH_SCREEN_HEIGHT, first, 2, &p);
+        project_lines(c->track, &v, lines, BENCH_SCREEN_HEIGHT, first, 2, NULL,
+                      &p);
         for (int y = first; y < BENCH_SCREEN_HEIGHT; y += 2)
             attributes[y] = render_line(y, &lines[y], &layout, &r);
         const int hud = first == 0;
         uint32_t fbWrites = BENCH_SCREEN_HEIGHT / 2;
         if (hud)
-            fbWrites += 2 + hud_build(v.position) / 2;
+            /* Tiles et entrées du compteur ; l'en-tête de la zone de
+               transfert (sprites.c) n'est pas dans le banc */
+            fbWrites += hud_build(v.position, HUD_TILES, HUD_ENTRIES) / 2;
 
         /* Empreinte de ce que le VDP afficherait (voir bench.c) */
         uint32_t h = 2166136261u;

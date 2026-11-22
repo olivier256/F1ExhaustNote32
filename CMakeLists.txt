@@ -34,9 +34,6 @@ else()
 endif()
 
 # ---- Outils de l'hôte : images et circuit -> données C ----------------------
-# bmp2c ne sert pas à la démo pour l'instant (aucune image) : il reste
-# construit pour les sprites et les plans à venir.
-
 add_executable(bmp2c tools/bmp2c.c)
 target_include_directories(bmp2c PRIVATE race)
 target_compile_options(bmp2c PRIVATE -Wall -Wextra)
@@ -50,7 +47,17 @@ target_link_libraries(track2c PRIVATE m)
 # Converties à chaque modification d'une source.
 
 set(GENERATED ${CMAKE_CURRENT_BINARY_DIR}/generated)
+set(DEMO_MANIFEST ${CMAKE_CURRENT_SOURCE_DIR}/demo/assets/assets.txt)
+file(GLOB DEMO_BMP CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/demo/assets/props/*.bmp)
 set(DEMO_TRACK ${CMAKE_CURRENT_SOURCE_DIR}/demo/track.txt)
+
+add_custom_command(
+	OUTPUT ${GENERATED}/demo_assets.c ${GENERATED}/demo_assets.h
+	COMMAND ${CMAKE_COMMAND} -E make_directory ${GENERATED}
+	COMMAND bmp2c ${DEMO_MANIFEST} ${GENERATED}/demo_assets
+	DEPENDS bmp2c ${DEMO_MANIFEST} ${DEMO_BMP}
+	COMMENT "Conversion des images de la demo"
+)
 
 add_custom_command(
 	OUTPUT ${GENERATED}/demo_track.c ${GENERATED}/demo_track.h
@@ -61,12 +68,12 @@ add_custom_command(
 )
 
 # Données de la démo, partagées par les exécutables
-add_library(demo_data STATIC ${GENERATED}/demo_track.c)
+add_library(demo_data STATIC ${GENERATED}/demo_assets.c ${GENERATED}/demo_track.c)
 target_include_directories(demo_data PUBLIC race ${GENERATED})
 
 # ---- Moteur + démo ---------------------------------------------------------
 
-set(RACE_ENGINE race/project.c race/render.c race/hud.c)
+set(RACE_ENGINE race/project.c race/render.c race/hud.c race/sprites.c)
 set(RACE_SOURCES
 	race/race.c
 	race/framebuffer.c

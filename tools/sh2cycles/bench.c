@@ -42,11 +42,11 @@ static uint8_t attributes[BENCH_SCREEN_HEIGHT];
 
 static void drawFrame(const View *v) {
     project_lines(race_content.track, v, lines, BENCH_SCREEN_HEIGHT,
-                  BENCH_FIRST_LINE, 2, 0);
+                  BENCH_FIRST_LINE, 2, 0, 0);
     for (int y = BENCH_FIRST_LINE; y < BENCH_SCREEN_HEIGHT; y += 2)
         attributes[y] = (uint8_t)render_line(y, &lines[y], &layout, 0);
     if (BENCH_FIRST_LINE == 0) /* le compteur : Master seulement */
-        hud_build(v->position);
+        hud_build(v->position, HUD_TILES, HUD_ENTRIES);
 }
 
 /* Empreinte de ce que le VDP afficherait : pour chaque ligne, les 320
