@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en-us"><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="env" content="prod">
+  <meta name="deploy-date" content="2020-10-03">
+  <meta name="publish-date" content="2012-06-23">
+  <meta name="last-modified-date" content="2020-03-24">
+  <meta name="author" content="Jake Gordon">
+  <meta name="email" content="jake@codeincomplete.com">
+  <meta name="description" content="Personal Website for Jake Gordon">
+  <meta property="og:image" content="https://codeincomplete.com/images/brand.e0292570a36e5568dcf7f87a7bb5cc72443280f97a42b68acd6b3899339da569.png">
+  <meta property="og:description" content="Personal Website for Jake Gordon">
+  <meta property="og:title" content="How to build a racing game - straight roads">
+  <title> How to build a racing game - straight roads | Code inComplete </title>
+  <script src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/cbgapi.loaded_1" async=""></script><script src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/cbgapi.loaded_0" async=""></script><script id="facebook-jssdk" src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/sdk.js"></script><script>
+  window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;
+  ga('create', 'UA-21073988-1', 'auto');
+  ga('send', 'pageview');
+  </script>
+  <script async="" src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/analytics.js"></script>
+  <link rel="preconnect" href="https://fonts.gstatic.com/">
+  <link rel="preconnect" href="https://www.google-analytics.com/">
+  <link rel="stylesheet" href="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/content.css">
+  <link rel="stylesheet" as="style" href="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/font-awesome.css" onload="this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="/css/font-awesome.min.68602f64c8baddd5839b6fd6224c7ffb59b12ad3a6d0b3c62cfc78157b96562c.css"></noscript>
+  <link rel="shortcut icon" href="https://codeincomplete.com/images/favicon.b59955c6040c5682e3402f0d72dea53f4894d24f12eb58aacabca77cec478790.ico">
+<script src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/embed.js" data-timestamp="1614457234917"></script><link rel="prefetch" as="style" href="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/a_data/lounge.css"><link rel="prefetch" as="script" href="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/a_data/common.js"><link rel="prefetch" as="script" href="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/a_data/lounge.js"><link rel="prefetch" as="script" href="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/a_data/config.js"></head>
+<body>
+  <div id="frame"><div id="header"><div>
+    <a href="https://codeincomplete.com/"><img class="brand" src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/brand.png" alt="go to home page" title="go to home page"></a>
+  </div>
+
+  <div class="byline">
+    <div class="links">
+      <a href="https://codeincomplete.com/" class="">home</a> |
+      <a href="https://codeincomplete.com/articles/" class="selected">articles</a> |
+      <a href="https://codeincomplete.com/games/" class="">games</a> |
+      <a href="https://codeincomplete.com/projects/" class="">projects</a> |
+      <a href="https://codeincomplete.com/about/" class="">about</a>
+      <span class="show-sm-up">| <a href="https://codeincomplete.com/about/resume.pdf">resume</a></span>
+      <span class="contact">
+        <a href="https://www.linkedin.com/in/jake-gordon-123968aa" class="link linkedin" title="Jake Gordon on LinkedIn"><i class="fab fa-linkedin"></i></a>
+        <a href="https://twitter.com/jakesgordon" class="link twitter" title="@jakesgordon on Twitter"><i class="fab fa-twitter"></i></a>
+        <a href="https://github.com/jakesgordon" class="link github" title="@jakesgordon on GitHub"><i class="fab fa-github"></i></a>
+        <a href="mailto:jake@codeincomplete.com" class="link email" title="email jake@codeincomplete.com"><i class="fal fa-envelope"></i></a>
+        <a href="https://feeds.feedburner.com/codeincomplete" class="link rss" title="subscribe to articles in your favorite rss reader"><i class="fad fa-rss"></i></a>
+      </span>
+    </div>
+  </div>
+
+</div>
+<div id="content" class="page article javascript-racer-v1-straight"><div class="page-title">
+    <h1>How to build a racing game - straight roads</h1><span class="date">Sat, Jun 23, 2012</span>
+<div id="social">
+  <div id="twitter" class="network">
+    <a href="https://twitter.com/share" class="twitter-share-button" data-show-count="false">&nbsp;</a>
+  </div>
+  <div id="facebook" class="network">
+    <div class="fb-like" data-href="https://codeincomplete.com/articles/javascript-racer-v1-straight/" data-layout="button_count" data-action="like" data-size="small" data-show-faces="false" data-share="false"></div>
+    <div id="fb-root"></div>
+  </div>
+  <div id="google" class="network">
+    <div style="position: absolute; width: 450px; left: -10000px;" id="___plusone_0"><iframe ng-non-bindable="" hspace="0" marginheight="0" marginwidth="0" scrolling="no" style="position:absolute;top:-10000px;width:450px;margin:0px;border-style:none" tabindex="0" vspace="0" id="I0_1614457236076" name="I0_1614457236076" src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/fastbutton.html" data-gapiattached="true" width="100%" frameborder="0"></iframe></div><div class="g-plusone" data-gapiscan="true" data-onload="true" data-gapistub="true"></div>
+  </div>
+</div>
+
+</div><div class="pull-right">
+<a href="https://codeincomplete.com/games/racer/v1-straight"><img src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/straight.png" alt=""></a>
+</div>
+
+<p>Previously we introduced our outrun-style <a href="https://codeincomplete.com/articles/javascript-racer">racing game</a>, but how do we
+get started building a pseudo-3d racing game ?</p>
+<p>Well, we’re going to need to</p>
+<ul>
+<li>revise some trigonometry</li>
+<li>revise basic 3d projection</li>
+<li>build a game loop</li>
+<li>load some sprite images</li>
+<li>build some road geometry</li>
+<li>render the background</li>
+<li>render the road</li>
+<li>render the car</li>
+<li>enable keyboard support to drive the car</li>
+</ul>
+<p>Before we do any of that, lets go off and read <a href="http://www.extentofthejam.com/pseudo/">Lou’s Pseudo 3d Page</a> -
+its the main source of information (that I could find) online about how to build a pseudo-3d racing game.</p>
+<blockquote>
+<p><em><strong>NOTE</strong>: Lou’s page doesn’t render well in google chrome - so its best viewed using Firefox or IE</em></p>
+</blockquote>
+<p>Finished reading Lou’s article ? Great! We’re going to build a variation on his ‘Realistic Hills Using
+3d-Projected Segments’ approach. We will do it gradually, over the course of the next 4 articles, but we
+will start off here with v1, building very simple straight road geometry and projecting it onto our HTML5
+canvas element.</p>
+<blockquote>
+<p>see it in action <a href="https://codeincomplete.com/games/racer/v1-straight">here</a></p>
+</blockquote>
+<h2 id="some-trigonometry">Some Trigonometry</h2>
+<p>Before we get down to the implementation, lets use some basic trigonometry to remind ourselves how to project
+a point in a 3D world onto a 2D screen.</p>
+<p>At its most basic, without getting into vectors and matrices, 3D projection uses a law of <a href="http://www.khanacademy.org/math/geometry/triangles/v/similar-triangles">similar triangles</a>.
+If we were to label:</p>
+<ul>
+<li><strong>h</strong> = camera height</li>
+<li><strong>d</strong> = distance from camera to screen</li>
+<li><strong>z</strong> = distance from camera to car</li>
+<li><strong>y</strong> = screen y coordinate</li>
+</ul>
+<p>Then we could use the law of similar triangles to calculate</p>
+<blockquote>
+<p><strong>y = h*d/z</strong></p>
+</blockquote>
+<p>as shown in the diagram below:</p>
+<center>
+<img src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/projection.png" alt="">
+</center>
+
+<p>We could have also drawn a similar diagram from a top-down view instead of a side-on view and derived a similar
+equation for calculating the screen <strong>x</strong> coordinate as</p>
+<blockquote>
+<p><strong>x = w*d/z</strong></p>
+</blockquote>
+<p>Where <strong>w</strong> = half the width of the road (from camera to road edge)</p>
+<p>You can see that for both <strong>x</strong> and <strong>y</strong>, what we are really doing is scaling by a factor of</p>
+<blockquote>
+<p><strong>d/z</strong></p>
+</blockquote>
+<h2 id="coordinate-systems">Coordinate Systems</h2>
+<p>This sounds nice and simple in diagram form, but once you start coding its easy to get a little confused because we have
+been a bit loose in naming our variables and its not clear which represent 3d world coordinates and
+which represent 2d screen coordinates. We’ve also assumed that the camera is at the origin of our world when in
+reality it will be following our car.</p>
+<p>More formally we should be:</p>
+<ol>
+<li><strong>translating</strong> from world coordinates to camera coordinates</li>
+<li><strong>projecting</strong> camera coordinates onto a normalized projection plane</li>
+<li><strong>scaling</strong> the projected coordinates to physical screen (in our case canvas) coordinates</li>
+</ol>
+<p><img src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/coords.png" alt=""></p>
+<blockquote>
+<p><em>NOTE: in a true 3d system a <em>rotation</em> step would come between steps 1 and 2, but since we’re going to be faking curves we dont need to worry about rotation</em></p>
+</blockquote>
+<h2 id="projection">Projection</h2>
+<p>And so we can present our formal projection equations as follows:</p>
+<p><img src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/equations.png" alt=""></p>
+<ul>
+<li>The <strong>translate</strong> equations calculate the point relative to the camera</li>
+<li>The <strong>project</strong> equations are variations of our ‘law of similar triangles’ above</li>
+<li>The <strong>scale</strong> equations take into account the difference between:
+<ul>
+<li><em>math</em> - where 0,0 is at the center and the y axis goes up and</li>
+<li><em>computers</em> - where 0,0 is at the top-left and the y axis goes down, as shown below:</li>
+</ul>
+</li>
+</ul>
+<p><img src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/scaling.png" alt=""></p>
+<blockquote>
+<p><em>NOTE: In a full blown 3d system we would more formally define a <code>Vector</code> and a <code>Matrix</code> class
+to perform more robust 3d mathematics, and if we were going to do that then we might as
+well just use WebGL (or equivalent)… but thats not really the point of this project. I
+really wanted to stick to old-school ‘just-enough’ pseudo-3d to build an outrun-style game.</em></p>
+</blockquote>
+<h2 id="some-more-trigonometry">Some More Trigonometry</h2>
+<div class="pull-right">
+<img src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/fov.png" alt="">
+</div>
+
+<p>One last piece of the puzzle is how to calculate <strong>d</strong> - the distance from the camera to the
+projection plane.</p>
+<p>Instead of hard coding a value for <strong>d</strong>, its more useful to derive it from the desired
+vertical field of view. This way we can choose to ‘zoom’ the camera if needed.</p>
+<p>Assuming we are projecting onto a normalized projection plane, with coordinates
+from -1 to +1, we can calculate <strong>d</strong> as follows:</p>
+<blockquote>
+<p><strong>d</strong> = 1/tan(fov/2)</p>
+</blockquote>
+<p>Setting up <strong>fov</strong> as one (of many) variables we will be able to tweak in order to fine
+tune the rendering algorithm.</p>
+<h2 id="javascript-code-structure">Javascript Code Structure</h2>
+<p>I mentioned in the <a href="https://codeincomplete.com/articles/javascript-racer">introduction</a> that this code does not exactly
+follow javascript best practices - its a quick and dirty demo with simple global variables and
+functions. However, since I am going to build 4 separate versions (straights, curves, hills and sprites)
+I will keep some re-usable methods inside <code>common.js</code> within the following modules:</p>
+<ul>
+<li><strong>Dom</strong>    - a few minor DOM helpers.</li>
+<li><strong>Util</strong>   - generic utilities, mostly math helpers.</li>
+<li><strong>Game</strong>   - generic game helpers such as an image loader and the game loop.</li>
+<li><strong>Render</strong> - canvas rendering helpers.</li>
+</ul>
+<p>I will only be detailing methods from <code>common.js</code> if they are relevent to the actual game, rather
+than just simple DOM or math helpers. Hopefully you can tell from the name and context what the
+methods are supposed to do.</p>
+<blockquote>
+<p><em>As usual, the source code is the final documentation.</em></p>
+</blockquote>
+<h2 id="a-simple-game-loop">A Simple Game Loop</h2>
+<p>Before we can render anything, we need a game loop. If you’ve followed any of my previous
+game articles (<a href="https://codeincomplete.com/articles/javascript-pong">pong</a>, <a href="https://codeincomplete.com/articles/javascript-breakout">breakout</a>,
+<a href="https://codeincomplete.com/articles/javascript-tetris">tetris</a>, <a href="https://codeincomplete.com/articles/javascript-snakes">snakes</a> or
+<a href="https://codeincomplete.com/articles/javascript-boulderdash">boulderdash</a>) then you’ll have already seen
+examples of my favorite <a href="http://gafferongames.com/game-physics/fix-your-timestep/">fixed time step</a>
+game loop.</p>
+<p>I won’t go into much detail here, I’ll simply re-use some of the code from my previous
+games to come up with a fixed time step game loop using
+<a href="http://paulirish.com/2011/requestanimationframe-for-smart-animating/">requestAnimationFrame</a></p>
+<p>The idea being that each of my 4 examples can call <code>Game.run(...)</code> and provide their own versions of</p>
+<ul>
+<li><code>update</code> - the game world with a fixed time step.</li>
+<li><code>render</code> - the game world whenever the browser allows.</li>
+</ul>
+<div class="highlight"><pre class="chroma"><code class="language-javascript" data-lang="javascript"><span class="nx">run</span><span class="o">:</span> <span class="kd">function</span><span class="p">(</span><span class="nx">options</span><span class="p">)</span> <span class="p">{</span>
+
+  <span class="nx">Game</span><span class="p">.</span><span class="nx">loadImages</span><span class="p">(</span><span class="nx">options</span><span class="p">.</span><span class="nx">images</span><span class="p">,</span> <span class="kd">function</span><span class="p">(</span><span class="nx">images</span><span class="p">)</span> <span class="p">{</span>
+
+    <span class="kd">var</span> <span class="nx">update</span> <span class="o">=</span> <span class="nx">options</span><span class="p">.</span><span class="nx">update</span><span class="p">,</span>    <span class="c1">// method to update game logic is provided by caller
+</span><span class="c1"></span>        <span class="nx">render</span> <span class="o">=</span> <span class="nx">options</span><span class="p">.</span><span class="nx">render</span><span class="p">,</span>    <span class="c1">// method to render the game is provided by caller
+</span><span class="c1"></span>        <span class="nx">step</span>   <span class="o">=</span> <span class="nx">options</span><span class="p">.</span><span class="nx">step</span><span class="p">,</span>      <span class="c1">// fixed frame step (1/fps) is specified by caller
+</span><span class="c1"></span>        <span class="nx">now</span>    <span class="o">=</span> <span class="kc">null</span><span class="p">,</span>
+        <span class="nx">last</span>   <span class="o">=</span> <span class="nx">Util</span><span class="p">.</span><span class="nx">timestamp</span><span class="p">(),</span>
+        <span class="nx">dt</span>     <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="nx">gdt</span>    <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+    <span class="kd">function</span> <span class="nx">frame</span><span class="p">()</span> <span class="p">{</span>
+      <span class="nx">now</span> <span class="o">=</span> <span class="nx">Util</span><span class="p">.</span><span class="nx">timestamp</span><span class="p">();</span>
+      <span class="nx">dt</span>  <span class="o">=</span> <span class="nb">Math</span><span class="p">.</span><span class="nx">min</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="p">(</span><span class="nx">now</span> <span class="o">-</span> <span class="nx">last</span><span class="p">)</span> <span class="o">/</span> <span class="mi">1000</span><span class="p">);</span> <span class="c1">// using requestAnimationFrame have to be able to handle large delta's caused when it 'hibernates' in a background or non-visible tab
+</span><span class="c1"></span>      <span class="nx">gdt</span> <span class="o">=</span> <span class="nx">gdt</span> <span class="o">+</span> <span class="nx">dt</span><span class="p">;</span>
+      <span class="k">while</span> <span class="p">(</span><span class="nx">gdt</span> <span class="o">&gt;</span> <span class="nx">step</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">gdt</span> <span class="o">=</span> <span class="nx">gdt</span> <span class="o">-</span> <span class="nx">step</span><span class="p">;</span>
+        <span class="nx">update</span><span class="p">(</span><span class="nx">step</span><span class="p">);</span>
+      <span class="p">}</span>
+      <span class="nx">render</span><span class="p">();</span>
+      <span class="nx">last</span> <span class="o">=</span> <span class="nx">now</span><span class="p">;</span>
+      <span class="nx">requestAnimationFrame</span><span class="p">(</span><span class="nx">frame</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="nx">frame</span><span class="p">();</span> <span class="c1">// lets get this party started
+</span><span class="c1"></span>  <span class="p">});</span>
+<span class="p">}</span>
+</code></pre></div><p>Again, this is a rehash of ideas from my previous canvas games, so if you need clarification on how the
+game loop works go back and read those earlier articles (or post a comment below!).</p>
+<h2 id="images-and-sprites">Images and Sprites</h2>
+<p>Before our game loop starts, we load 2 separate sprite sheets:</p>
+<ul>
+<li><strong>background</strong> - 3 parallax layers for sky, hills and trees</li>
+<li><strong>sprites</strong> - the car sprites (plus trees and billboards to add to the final version)</li>
+</ul>
+<p><img src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/sprites.png" alt=""></p>
+<p>The spritesheet was generated with a small Rake task using the <a href="https://codeincomplete.com/articles/sprite-factory">sprite-factory Ruby Gem</a>.
+This task generates the unified sprite sheets as well as the x,y,w,h coordinates to
+be stored in the <code>BACKGROUND</code> and <code>SPRITES</code> constants.</p>
+<blockquote>
+<p><em>NOTE: The backgrounds are home-made using Inkscape, while most of the sprites are
+placeholder graphics <a href="http://pixel.garoux.net/game/44">borrowed</a> from the old genesis
+version of outrun and used here as teaching examples. If there are any pixel artists
+out there who want to provide original art to turn this into a real game please get in touch!</em></p>
+</blockquote>
+<h2 id="game-variables">Game Variables</h2>
+<p>In addition to our background and sprite images we will need a number of game variables, including:</p>
+<div class="highlight"><pre class="chroma"><code class="language-javascript" data-lang="javascript"><span class="kd">var</span> <span class="nx">fps</span>           <span class="o">=</span> <span class="mi">60</span><span class="p">;</span>                      <span class="c1">// how many 'update' frames per second
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">step</span>          <span class="o">=</span> <span class="mi">1</span><span class="o">/</span><span class="nx">fps</span><span class="p">;</span>                   <span class="c1">// how long is each frame (in seconds)
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">width</span>         <span class="o">=</span> <span class="mi">1024</span><span class="p">;</span>                    <span class="c1">// logical canvas width
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">height</span>        <span class="o">=</span> <span class="mi">768</span><span class="p">;</span>                     <span class="c1">// logical canvas height
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">segments</span>      <span class="o">=</span> <span class="p">[];</span>                      <span class="c1">// array of road segments
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">canvas</span>        <span class="o">=</span> <span class="nx">Dom</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">'canvas'</span><span class="p">);</span>       <span class="c1">// our canvas...
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">ctx</span>           <span class="o">=</span> <span class="nx">canvas</span><span class="p">.</span><span class="nx">getContext</span><span class="p">(</span><span class="s1">'2d'</span><span class="p">);</span> <span class="c1">// ...and its drawing context
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">background</span>    <span class="o">=</span> <span class="kc">null</span><span class="p">;</span>                    <span class="c1">// our background image (loaded below)
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">sprites</span>       <span class="o">=</span> <span class="kc">null</span><span class="p">;</span>                    <span class="c1">// our spritesheet (loaded below)
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">resolution</span>    <span class="o">=</span> <span class="kc">null</span><span class="p">;</span>                    <span class="c1">// scaling factor to provide resolution independence (computed)
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">roadWidth</span>     <span class="o">=</span> <span class="mi">2000</span><span class="p">;</span>                    <span class="c1">// actually half the roads width, easier math if the road spans from -roadWidth to +roadWidth
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">segmentLength</span> <span class="o">=</span> <span class="mi">200</span><span class="p">;</span>                     <span class="c1">// length of a single segment
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">rumbleLength</span>  <span class="o">=</span> <span class="mi">3</span><span class="p">;</span>                       <span class="c1">// number of segments per red/white rumble strip
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">trackLength</span>   <span class="o">=</span> <span class="kc">null</span><span class="p">;</span>                    <span class="c1">// z length of entire track (computed)
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">lanes</span>         <span class="o">=</span> <span class="mi">3</span><span class="p">;</span>                       <span class="c1">// number of lanes
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">fieldOfView</span>   <span class="o">=</span> <span class="mi">100</span><span class="p">;</span>                     <span class="c1">// angle (degrees) for field of view
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">cameraHeight</span>  <span class="o">=</span> <span class="mi">1000</span><span class="p">;</span>                    <span class="c1">// z height of camera
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">cameraDepth</span>   <span class="o">=</span> <span class="kc">null</span><span class="p">;</span>                    <span class="c1">// z distance camera is from screen (computed)
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">drawDistance</span>  <span class="o">=</span> <span class="mi">300</span><span class="p">;</span>                     <span class="c1">// number of segments to draw
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">playerX</span>       <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>                       <span class="c1">// player x offset from center of road (-1 to 1 to stay independent of roadWidth)
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">playerZ</span>       <span class="o">=</span> <span class="kc">null</span><span class="p">;</span>                    <span class="c1">// player relative z distance from camera (computed)
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">fogDensity</span>    <span class="o">=</span> <span class="mi">5</span><span class="p">;</span>                       <span class="c1">// exponential fog density
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">position</span>      <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>                       <span class="c1">// current camera Z position (add playerZ to get player's absolute Z position)
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">speed</span>         <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>                       <span class="c1">// current speed
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">maxSpeed</span>      <span class="o">=</span> <span class="nx">segmentLength</span><span class="o">/</span><span class="nx">step</span><span class="p">;</span>      <span class="c1">// top speed (ensure we can't move more than 1 segment in a single frame to make collision detection easier)
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">accel</span>         <span class="o">=</span>  <span class="nx">maxSpeed</span><span class="o">/</span><span class="mi">5</span><span class="p">;</span>             <span class="c1">// acceleration rate - tuned until it 'felt' right
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">breaking</span>      <span class="o">=</span> <span class="o">-</span><span class="nx">maxSpeed</span><span class="p">;</span>               <span class="c1">// deceleration rate when braking
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">decel</span>         <span class="o">=</span> <span class="o">-</span><span class="nx">maxSpeed</span><span class="o">/</span><span class="mi">5</span><span class="p">;</span>             <span class="c1">// 'natural' deceleration rate when neither accelerating, nor braking
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">offRoadDecel</span>  <span class="o">=</span> <span class="o">-</span><span class="nx">maxSpeed</span><span class="o">/</span><span class="mi">2</span><span class="p">;</span>             <span class="c1">// off road deceleration is somewhere in between
+</span><span class="c1"></span><span class="kd">var</span> <span class="nx">offRoadLimit</span>  <span class="o">=</span>  <span class="nx">maxSpeed</span><span class="o">/</span><span class="mi">4</span><span class="p">;</span>             <span class="c1">// limit when off road deceleration no longer applies (e.g. you can always go at least this speed even when off road)
+</span></code></pre></div><p>Some of these can be adjusted using the tweak UI controls to allow you to
+vary some of the critical values at run-time to see what effect they have on the
+rendered road. Others are derived from the tweakable UI values and recalculated
+during the <code>reset()</code> method.</p>
+<h2 id="driving-a-ferrari">Driving a Ferrari</h2>
+<p>We provide a key mapping to <code>Game.run</code> that allows for simple keyboard
+input that sets or clears variables to indicate any action the player
+is currently taking:</p>
+<div class="highlight"><pre class="chroma"><code class="language-javascript" data-lang="javascript"><span class="nx">Game</span><span class="p">.</span><span class="nx">run</span><span class="p">({</span>
+  <span class="p">...</span>
+  <span class="nx">keys</span><span class="o">:</span> <span class="p">[</span>
+    <span class="p">{</span> <span class="nx">keys</span><span class="o">:</span> <span class="p">[</span><span class="nx">KEY</span><span class="p">.</span><span class="nx">LEFT</span><span class="p">,</span>  <span class="nx">KEY</span><span class="p">.</span><span class="nx">A</span><span class="p">],</span> <span class="nx">mode</span><span class="o">:</span> <span class="s1">'down'</span><span class="p">,</span> <span class="nx">action</span><span class="o">:</span> <span class="kd">function</span><span class="p">()</span> <span class="p">{</span> <span class="nx">keyLeft</span>   <span class="o">=</span> <span class="kc">true</span><span class="p">;</span>  <span class="p">}</span> <span class="p">},</span>
+    <span class="p">{</span> <span class="nx">keys</span><span class="o">:</span> <span class="p">[</span><span class="nx">KEY</span><span class="p">.</span><span class="nx">RIGHT</span><span class="p">,</span> <span class="nx">KEY</span><span class="p">.</span><span class="nx">D</span><span class="p">],</span> <span class="nx">mode</span><span class="o">:</span> <span class="s1">'down'</span><span class="p">,</span> <span class="nx">action</span><span class="o">:</span> <span class="kd">function</span><span class="p">()</span> <span class="p">{</span> <span class="nx">keyRight</span>  <span class="o">=</span> <span class="kc">true</span><span class="p">;</span>  <span class="p">}</span> <span class="p">},</span>
+    <span class="p">{</span> <span class="nx">keys</span><span class="o">:</span> <span class="p">[</span><span class="nx">KEY</span><span class="p">.</span><span class="nx">UP</span><span class="p">,</span>    <span class="nx">KEY</span><span class="p">.</span><span class="nx">W</span><span class="p">],</span> <span class="nx">mode</span><span class="o">:</span> <span class="s1">'down'</span><span class="p">,</span> <span class="nx">action</span><span class="o">:</span> <span class="kd">function</span><span class="p">()</span> <span class="p">{</span> <span class="nx">keyFaster</span> <span class="o">=</span> <span class="kc">true</span><span class="p">;</span>  <span class="p">}</span> <span class="p">},</span>
+    <span class="p">{</span> <span class="nx">keys</span><span class="o">:</span> <span class="p">[</span><span class="nx">KEY</span><span class="p">.</span><span class="nx">DOWN</span><span class="p">,</span>  <span class="nx">KEY</span><span class="p">.</span><span class="nx">S</span><span class="p">],</span> <span class="nx">mode</span><span class="o">:</span> <span class="s1">'down'</span><span class="p">,</span> <span class="nx">action</span><span class="o">:</span> <span class="kd">function</span><span class="p">()</span> <span class="p">{</span> <span class="nx">keySlower</span> <span class="o">=</span> <span class="kc">true</span><span class="p">;</span>  <span class="p">}</span> <span class="p">},</span>
+    <span class="p">{</span> <span class="nx">keys</span><span class="o">:</span> <span class="p">[</span><span class="nx">KEY</span><span class="p">.</span><span class="nx">LEFT</span><span class="p">,</span>  <span class="nx">KEY</span><span class="p">.</span><span class="nx">A</span><span class="p">],</span> <span class="nx">mode</span><span class="o">:</span> <span class="s1">'up'</span><span class="p">,</span>   <span class="nx">action</span><span class="o">:</span> <span class="kd">function</span><span class="p">()</span> <span class="p">{</span> <span class="nx">keyLeft</span>   <span class="o">=</span> <span class="kc">false</span><span class="p">;</span> <span class="p">}</span> <span class="p">},</span>
+    <span class="p">{</span> <span class="nx">keys</span><span class="o">:</span> <span class="p">[</span><span class="nx">KEY</span><span class="p">.</span><span class="nx">RIGHT</span><span class="p">,</span> <span class="nx">KEY</span><span class="p">.</span><span class="nx">D</span><span class="p">],</span> <span class="nx">mode</span><span class="o">:</span> <span class="s1">'up'</span><span class="p">,</span>   <span class="nx">action</span><span class="o">:</span> <span class="kd">function</span><span class="p">()</span> <span class="p">{</span> <span class="nx">keyRight</span>  <span class="o">=</span> <span class="kc">false</span><span class="p">;</span> <span class="p">}</span> <span class="p">},</span>
+    <span class="p">{</span> <span class="nx">keys</span><span class="o">:</span> <span class="p">[</span><span class="nx">KEY</span><span class="p">.</span><span class="nx">UP</span><span class="p">,</span>    <span class="nx">KEY</span><span class="p">.</span><span class="nx">W</span><span class="p">],</span> <span class="nx">mode</span><span class="o">:</span> <span class="s1">'up'</span><span class="p">,</span>   <span class="nx">action</span><span class="o">:</span> <span class="kd">function</span><span class="p">()</span> <span class="p">{</span> <span class="nx">keyFaster</span> <span class="o">=</span> <span class="kc">false</span><span class="p">;</span> <span class="p">}</span> <span class="p">},</span>
+    <span class="p">{</span> <span class="nx">keys</span><span class="o">:</span> <span class="p">[</span><span class="nx">KEY</span><span class="p">.</span><span class="nx">DOWN</span><span class="p">,</span>  <span class="nx">KEY</span><span class="p">.</span><span class="nx">S</span><span class="p">],</span> <span class="nx">mode</span><span class="o">:</span> <span class="s1">'up'</span><span class="p">,</span>   <span class="nx">action</span><span class="o">:</span> <span class="kd">function</span><span class="p">()</span> <span class="p">{</span> <span class="nx">keySlower</span> <span class="o">=</span> <span class="kc">false</span><span class="p">;</span> <span class="p">}</span> <span class="p">}</span>
+  <span class="p">],</span>
+  <span class="p">...</span>
+<span class="p">}</span>
+</code></pre></div><p>The variables that manage the player’s state are:</p>
+<ul>
+<li><strong>speed</strong>    - the current speed.</li>
+<li><strong>position</strong> - the current Z position down the track. Note this is actually the position of the camera, not the ferrari.</li>
+<li><strong>playerX</strong>  - the current X position across the road. Normalized from -1 to +1 to be independent of the actual <code>roadWidth</code>.</li>
+</ul>
+<p>These variables are set within the <code>update</code> method, which will:</p>
+<ul>
+<li>update <code>position</code> based on current <code>speed</code>.</li>
+<li>update <code>playerX</code> if left or right arrow keys are pressed.</li>
+<li>accelerate <code>speed</code> if up arrow is pressed.</li>
+<li>decelerate <code>speed</code> if down arrow is pressed.</li>
+<li>decelerate <code>speed</code> if neither up or down arrows are pressed.</li>
+<li>decelerate <code>speed</code> if <code>playerX</code> is off the sides of the road and into the grass.</li>
+</ul>
+<p>For straight roads, the <code>update</code> method is pretty clean and simple:</p>
+<div class="highlight"><pre class="chroma"><code class="language-javascript" data-lang="javascript"><span class="kd">function</span> <span class="nx">update</span><span class="p">(</span><span class="nx">dt</span><span class="p">)</span> <span class="p">{</span>
+
+  <span class="nx">position</span> <span class="o">=</span> <span class="nx">Util</span><span class="p">.</span><span class="nx">increase</span><span class="p">(</span><span class="nx">position</span><span class="p">,</span> <span class="nx">dt</span> <span class="o">*</span> <span class="nx">speed</span><span class="p">,</span> <span class="nx">trackLength</span><span class="p">);</span>
+
+  <span class="kd">var</span> <span class="nx">dx</span> <span class="o">=</span> <span class="nx">dt</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="nx">speed</span><span class="o">/</span><span class="nx">maxSpeed</span><span class="p">);</span> <span class="c1">// at top speed, should be able to cross from left to right (-1 to 1) in 1 second
+</span><span class="c1"></span>
+  <span class="k">if</span> <span class="p">(</span><span class="nx">keyLeft</span><span class="p">)</span>
+    <span class="nx">playerX</span> <span class="o">=</span> <span class="nx">playerX</span> <span class="o">-</span> <span class="nx">dx</span><span class="p">;</span>
+  <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="nx">keyRight</span><span class="p">)</span>
+    <span class="nx">playerX</span> <span class="o">=</span> <span class="nx">playerX</span> <span class="o">+</span> <span class="nx">dx</span><span class="p">;</span>
+
+  <span class="k">if</span> <span class="p">(</span><span class="nx">keyFaster</span><span class="p">)</span>
+    <span class="nx">speed</span> <span class="o">=</span> <span class="nx">Util</span><span class="p">.</span><span class="nx">accelerate</span><span class="p">(</span><span class="nx">speed</span><span class="p">,</span> <span class="nx">accel</span><span class="p">,</span> <span class="nx">dt</span><span class="p">);</span>
+  <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="nx">keySlower</span><span class="p">)</span>
+    <span class="nx">speed</span> <span class="o">=</span> <span class="nx">Util</span><span class="p">.</span><span class="nx">accelerate</span><span class="p">(</span><span class="nx">speed</span><span class="p">,</span> <span class="nx">breaking</span><span class="p">,</span> <span class="nx">dt</span><span class="p">);</span>
+  <span class="k">else</span>
+    <span class="nx">speed</span> <span class="o">=</span> <span class="nx">Util</span><span class="p">.</span><span class="nx">accelerate</span><span class="p">(</span><span class="nx">speed</span><span class="p">,</span> <span class="nx">decel</span><span class="p">,</span> <span class="nx">dt</span><span class="p">);</span>
+
+  <span class="k">if</span> <span class="p">(((</span><span class="nx">playerX</span> <span class="o">&lt;</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">||</span> <span class="p">(</span><span class="nx">playerX</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">))</span> <span class="o">&amp;&amp;</span> <span class="p">(</span><span class="nx">speed</span> <span class="o">&gt;</span> <span class="nx">offRoadLimit</span><span class="p">))</span>
+    <span class="nx">speed</span> <span class="o">=</span> <span class="nx">Util</span><span class="p">.</span><span class="nx">accelerate</span><span class="p">(</span><span class="nx">speed</span><span class="p">,</span> <span class="nx">offRoadDecel</span><span class="p">,</span> <span class="nx">dt</span><span class="p">);</span>
+
+  <span class="nx">playerX</span> <span class="o">=</span> <span class="nx">Util</span><span class="p">.</span><span class="nx">limit</span><span class="p">(</span><span class="nx">playerX</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">);</span>     <span class="c1">// dont ever let player go too far out of bounds
+</span><span class="c1"></span>  <span class="nx">speed</span>   <span class="o">=</span> <span class="nx">Util</span><span class="p">.</span><span class="nx">limit</span><span class="p">(</span><span class="nx">speed</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">maxSpeed</span><span class="p">);</span> <span class="c1">// or exceed maxSpeed
+</span><span class="c1"></span>
+<span class="p">}</span>
+</code></pre></div><blockquote>
+<p><em>Don’t worry, it will get much more complicated when we add sprites and
+collision detection in the final version :-)</em></p>
+</blockquote>
+<h2 id="road-geometry">Road Geometry</h2>
+<p>Before we can render our game world, we need to build up our array of
+road <code>segments</code> within the <code>resetRoad()</code> method.</p>
+<p>Each of these road segments will eventually be projected from their world coordinates
+to become a 2d polygon in screen coordinates. We store 2 points for each segment, <strong>p1</strong>
+is the center of the edge closest to the camera, while <strong>p2</strong> is the center of the edge
+farthest from the camera.</p>
+<p><img src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/segments.png" alt=""></p>
+<p>Technically, each segments <strong>p2</strong> is identical to the previous sections <strong>p1</strong> but we
+will find it easier to maintain them as separate points and transform each segment
+independently.</p>
+<p>The reason we maintain a separate <code>rumbleLength</code> is so that we can have fine detailed
+curves and hills but still have long rumble strips. If each alternating segment was
+a different color it would create a bad strobe effect. So we want lots of small
+segments, but group them together to form each rumble strip.</p>
+<div class="highlight"><pre class="chroma"><code class="language-javascript" data-lang="javascript"><span class="kd">function</span> <span class="nx">resetRoad</span><span class="p">()</span> <span class="p">{</span>
+  <span class="nx">segments</span> <span class="o">=</span> <span class="p">[];</span>
+  <span class="k">for</span><span class="p">(</span><span class="kd">var</span> <span class="nx">n</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">;</span> <span class="nx">n</span> <span class="o">&lt;</span> <span class="mi">500</span> <span class="p">;</span> <span class="nx">n</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span> <span class="c1">// arbitrary road length
+</span><span class="c1"></span>    <span class="nx">segments</span><span class="p">.</span><span class="nx">push</span><span class="p">({</span>
+       <span class="nx">index</span><span class="o">:</span> <span class="nx">n</span><span class="p">,</span>
+       <span class="nx">p1</span><span class="o">:</span> <span class="p">{</span> <span class="nx">world</span><span class="o">:</span> <span class="p">{</span> <span class="nx">z</span><span class="o">:</span>  <span class="nx">n</span>   <span class="o">*</span><span class="nx">segmentLength</span> <span class="p">},</span> <span class="nx">camera</span><span class="o">:</span> <span class="p">{},</span> <span class="nx">screen</span><span class="o">:</span> <span class="p">{}</span> <span class="p">},</span>
+       <span class="nx">p2</span><span class="o">:</span> <span class="p">{</span> <span class="nx">world</span><span class="o">:</span> <span class="p">{</span> <span class="nx">z</span><span class="o">:</span> <span class="p">(</span><span class="nx">n</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="nx">segmentLength</span> <span class="p">},</span> <span class="nx">camera</span><span class="o">:</span> <span class="p">{},</span> <span class="nx">screen</span><span class="o">:</span> <span class="p">{}</span> <span class="p">},</span>
+       <span class="nx">color</span><span class="o">:</span> <span class="nb">Math</span><span class="p">.</span><span class="nx">floor</span><span class="p">(</span><span class="nx">n</span><span class="o">/</span><span class="nx">rumbleLength</span><span class="p">)</span><span class="o">%</span><span class="mi">2</span> <span class="o">?</span> <span class="nx">COLORS</span><span class="p">.</span><span class="nx">DARK</span> <span class="o">:</span> <span class="nx">COLORS</span><span class="p">.</span><span class="nx">LIGHT</span>
+    <span class="p">});</span>
+  <span class="p">}</span>
+
+  <span class="nx">trackLength</span> <span class="o">=</span> <span class="nx">segments</span><span class="p">.</span><span class="nx">length</span> <span class="o">*</span> <span class="nx">segmentLength</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div><p>We initialize <strong>p1</strong> and <strong>p2</strong> with only <strong>z</strong> world coordinates because we only need
+straight roads. The <strong>y</strong> coordinates will always be 0, while the <strong>x</strong> coordinates
+will always be based on a scaled  <code>+/- roadWidth</code>. This will change later when we
+add curves and hills.</p>
+<p>We also setup empty objects to store the camera and screen representations
+of these points to avoid creating lots of temporary objects during every <code>render</code></p>
+<ul>
+<li>trying to keep our garbage collection to a minimum we want to avoid allocating
+objects inside our game loop whenever possible.</li>
+</ul>
+<p>When the car reaches the end of the road we will simply loop back to the beginning. To
+make this a little easier we provide a method to find the segment for any Z value even
+if it extends beyond the length of the road:</p>
+<div class="highlight"><pre class="chroma"><code class="language-javascript" data-lang="javascript"><span class="kd">function</span> <span class="nx">findSegment</span><span class="p">(</span><span class="nx">z</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">return</span> <span class="nx">segments</span><span class="p">[</span><span class="nb">Math</span><span class="p">.</span><span class="nx">floor</span><span class="p">(</span><span class="nx">z</span><span class="o">/</span><span class="nx">segmentLength</span><span class="p">)</span> <span class="o">%</span> <span class="nx">segments</span><span class="p">.</span><span class="nx">length</span><span class="p">];</span>
+<span class="p">}</span>
+</code></pre></div><h2 id="rending-the-background">Rending the Background</h2>
+<p>Our <code>render()</code> method starts with drawing a background image. In future articles when we add curves
+and hills we will want the background to parallax scroll, so we start off in that direction here by
+rendering the background as 3 seperate layers:</p>
+<div class="highlight"><pre class="chroma"><code class="language-javascript" data-lang="javascript"><span class="kd">function</span> <span class="nx">render</span><span class="p">()</span> <span class="p">{</span>
+
+  <span class="nx">ctx</span><span class="p">.</span><span class="nx">clearRect</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="nx">width</span><span class="p">,</span> <span class="nx">height</span><span class="p">);</span>
+
+  <span class="nx">Render</span><span class="p">.</span><span class="nx">background</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">background</span><span class="p">,</span> <span class="nx">width</span><span class="p">,</span> <span class="nx">height</span><span class="p">,</span> <span class="nx">BACKGROUND</span><span class="p">.</span><span class="nx">SKY</span><span class="p">);</span>
+  <span class="nx">Render</span><span class="p">.</span><span class="nx">background</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">background</span><span class="p">,</span> <span class="nx">width</span><span class="p">,</span> <span class="nx">height</span><span class="p">,</span> <span class="nx">BACKGROUND</span><span class="p">.</span><span class="nx">HILLS</span><span class="p">);</span>
+  <span class="nx">Render</span><span class="p">.</span><span class="nx">background</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">background</span><span class="p">,</span> <span class="nx">width</span><span class="p">,</span> <span class="nx">height</span><span class="p">,</span> <span class="nx">BACKGROUND</span><span class="p">.</span><span class="nx">TREES</span><span class="p">);</span>
+
+  <span class="p">...</span>
+</code></pre></div><h2 id="rending-the-road">Rending the Road</h2>
+<p>The render function then iterates over the segments, and projects each segment’s
+<strong>p1</strong> and <strong>p2</strong> from world coordinates to screen coordinates, clipping
+the segment if necessary, otherwise rendering it:</p>
+<div class="highlight"><pre class="chroma"><code class="language-javascript" data-lang="javascript">  <span class="kd">var</span> <span class="nx">baseSegment</span> <span class="o">=</span> <span class="nx">findSegment</span><span class="p">(</span><span class="nx">position</span><span class="p">);</span>
+  <span class="kd">var</span> <span class="nx">maxy</span>        <span class="o">=</span> <span class="nx">height</span><span class="p">;</span>
+  <span class="kd">var</span> <span class="nx">n</span><span class="p">,</span> <span class="nx">segment</span><span class="p">;</span>
+  <span class="k">for</span><span class="p">(</span><span class="nx">n</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">;</span> <span class="nx">n</span> <span class="o">&lt;</span> <span class="nx">drawDistance</span> <span class="p">;</span> <span class="nx">n</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+
+    <span class="nx">segment</span> <span class="o">=</span> <span class="nx">segments</span><span class="p">[(</span><span class="nx">baseSegment</span><span class="p">.</span><span class="nx">index</span> <span class="o">+</span> <span class="nx">n</span><span class="p">)</span> <span class="o">%</span> <span class="nx">segments</span><span class="p">.</span><span class="nx">length</span><span class="p">];</span>
+
+    <span class="nx">Util</span><span class="p">.</span><span class="nx">project</span><span class="p">(</span><span class="nx">segment</span><span class="p">.</span><span class="nx">p1</span><span class="p">,</span> <span class="p">(</span><span class="nx">playerX</span> <span class="o">*</span> <span class="nx">roadWidth</span><span class="p">),</span> <span class="nx">cameraHeight</span><span class="p">,</span> <span class="nx">position</span><span class="p">,</span> <span class="nx">cameraDepth</span><span class="p">,</span> <span class="nx">width</span><span class="p">,</span> <span class="nx">height</span><span class="p">,</span> <span class="nx">roadWidth</span><span class="p">);</span>
+    <span class="nx">Util</span><span class="p">.</span><span class="nx">project</span><span class="p">(</span><span class="nx">segment</span><span class="p">.</span><span class="nx">p2</span><span class="p">,</span> <span class="p">(</span><span class="nx">playerX</span> <span class="o">*</span> <span class="nx">roadWidth</span><span class="p">),</span> <span class="nx">cameraHeight</span><span class="p">,</span> <span class="nx">position</span><span class="p">,</span> <span class="nx">cameraDepth</span><span class="p">,</span> <span class="nx">width</span><span class="p">,</span> <span class="nx">height</span><span class="p">,</span> <span class="nx">roadWidth</span><span class="p">);</span>
+
+    <span class="k">if</span> <span class="p">((</span><span class="nx">segment</span><span class="p">.</span><span class="nx">p1</span><span class="p">.</span><span class="nx">camera</span><span class="p">.</span><span class="nx">z</span> <span class="o">&lt;=</span> <span class="nx">cameraDepth</span><span class="p">)</span> <span class="o">||</span> <span class="c1">// behind us
+</span><span class="c1"></span>        <span class="p">(</span><span class="nx">segment</span><span class="p">.</span><span class="nx">p2</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">y</span> <span class="o">&gt;=</span> <span class="nx">maxy</span><span class="p">))</span>          <span class="c1">// clip by (already rendered) segment
+</span><span class="c1"></span>      <span class="k">continue</span><span class="p">;</span>
+
+    <span class="nx">Render</span><span class="p">.</span><span class="nx">segment</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">width</span><span class="p">,</span> <span class="nx">lanes</span><span class="p">,</span>
+                   <span class="nx">segment</span><span class="p">.</span><span class="nx">p1</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">x</span><span class="p">,</span>
+                   <span class="nx">segment</span><span class="p">.</span><span class="nx">p1</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">y</span><span class="p">,</span>
+                   <span class="nx">segment</span><span class="p">.</span><span class="nx">p1</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">w</span><span class="p">,</span>
+                   <span class="nx">segment</span><span class="p">.</span><span class="nx">p2</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">x</span><span class="p">,</span>
+                   <span class="nx">segment</span><span class="p">.</span><span class="nx">p2</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">y</span><span class="p">,</span>
+                   <span class="nx">segment</span><span class="p">.</span><span class="nx">p2</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">w</span><span class="p">,</span>
+                   <span class="nx">segment</span><span class="p">.</span><span class="nx">color</span><span class="p">);</span>
+
+    <span class="nx">maxy</span> <span class="o">=</span> <span class="nx">segment</span><span class="p">.</span><span class="nx">p2</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">y</span><span class="p">;</span>
+  <span class="p">}</span>
+</code></pre></div><br>
+
+<p>We saw the math required to project a point earlier, the javascript version combines
+the translation, projection and scaling equations into a single method:</p>
+<div class="highlight"><pre class="chroma"><code class="language-javascript" data-lang="javascript"><span class="nx">project</span><span class="o">:</span> <span class="kd">function</span><span class="p">(</span><span class="nx">p</span><span class="p">,</span> <span class="nx">cameraX</span><span class="p">,</span> <span class="nx">cameraY</span><span class="p">,</span> <span class="nx">cameraZ</span><span class="p">,</span> <span class="nx">cameraDepth</span><span class="p">,</span> <span class="nx">width</span><span class="p">,</span> <span class="nx">height</span><span class="p">,</span> <span class="nx">roadWidth</span><span class="p">)</span> <span class="p">{</span>
+  <span class="nx">p</span><span class="p">.</span><span class="nx">camera</span><span class="p">.</span><span class="nx">x</span>     <span class="o">=</span> <span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">world</span><span class="p">.</span><span class="nx">x</span> <span class="o">||</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-</span> <span class="nx">cameraX</span><span class="p">;</span>
+  <span class="nx">p</span><span class="p">.</span><span class="nx">camera</span><span class="p">.</span><span class="nx">y</span>     <span class="o">=</span> <span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">world</span><span class="p">.</span><span class="nx">y</span> <span class="o">||</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-</span> <span class="nx">cameraY</span><span class="p">;</span>
+  <span class="nx">p</span><span class="p">.</span><span class="nx">camera</span><span class="p">.</span><span class="nx">z</span>     <span class="o">=</span> <span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">world</span><span class="p">.</span><span class="nx">z</span> <span class="o">||</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-</span> <span class="nx">cameraZ</span><span class="p">;</span>
+  <span class="nx">p</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">scale</span> <span class="o">=</span> <span class="nx">cameraDepth</span><span class="o">/</span><span class="nx">p</span><span class="p">.</span><span class="nx">camera</span><span class="p">.</span><span class="nx">z</span><span class="p">;</span>
+  <span class="nx">p</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">x</span>     <span class="o">=</span> <span class="nb">Math</span><span class="p">.</span><span class="nx">round</span><span class="p">((</span><span class="nx">width</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span>  <span class="o">+</span> <span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">scale</span> <span class="o">*</span> <span class="nx">p</span><span class="p">.</span><span class="nx">camera</span><span class="p">.</span><span class="nx">x</span>  <span class="o">*</span> <span class="nx">width</span><span class="o">/</span><span class="mi">2</span><span class="p">));</span>
+  <span class="nx">p</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">y</span>     <span class="o">=</span> <span class="nb">Math</span><span class="p">.</span><span class="nx">round</span><span class="p">((</span><span class="nx">height</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span> <span class="o">-</span> <span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">scale</span> <span class="o">*</span> <span class="nx">p</span><span class="p">.</span><span class="nx">camera</span><span class="p">.</span><span class="nx">y</span>  <span class="o">*</span> <span class="nx">height</span><span class="o">/</span><span class="mi">2</span><span class="p">));</span>
+  <span class="nx">p</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">w</span>     <span class="o">=</span> <span class="nb">Math</span><span class="p">.</span><span class="nx">round</span><span class="p">(</span>             <span class="p">(</span><span class="nx">p</span><span class="p">.</span><span class="nx">screen</span><span class="p">.</span><span class="nx">scale</span> <span class="o">*</span> <span class="nx">roadWidth</span>   <span class="o">*</span> <span class="nx">width</span><span class="o">/</span><span class="mi">2</span><span class="p">));</span>
+<span class="p">}</span>
+</code></pre></div><br>
+
+<p>In addition to calculating screen <strong>x</strong> and <strong>y</strong> for each of our <strong>p1</strong> and <strong>p2</strong>
+points we also use the same projection math to calculate the projected width (<strong>w</strong>)
+of the segment.</p>
+<p>Given the screen <strong>x</strong> and <strong>y</strong> coordinates for both <strong>p1</strong> and <strong>p2</strong>, along with
+the projected road width <strong>w</strong>, it becomes fairly straight forward for the
+<code>Render.segment</code> helper to calculate all the polygons it needs to render the
+grass, road, rumble strips and lane separators using a generic <code>Render.polygon</code>
+helper <em>(see <code>common.js</code>)</em></p>
+<h2 id="rendering-the-car">Rendering the Car</h2>
+<p>Finally, the last thing required by the <code>render</code> method is to render the ferrari:</p>
+<div class="highlight"><pre class="chroma"><code class="language-javascript" data-lang="javascript">  <span class="nx">Render</span><span class="p">.</span><span class="nx">player</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span> <span class="nx">width</span><span class="p">,</span> <span class="nx">height</span><span class="p">,</span> <span class="nx">resolution</span><span class="p">,</span> <span class="nx">roadWidth</span><span class="p">,</span> <span class="nx">sprites</span><span class="p">,</span> <span class="nx">speed</span><span class="o">/</span><span class="nx">maxSpeed</span><span class="p">,</span>
+                <span class="nx">cameraDepth</span><span class="o">/</span><span class="nx">playerZ</span><span class="p">,</span>
+                <span class="nx">width</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span>
+                <span class="nx">height</span><span class="p">);</span>
+</code></pre></div><blockquote>
+<p><em>The reason this method is named <code>player</code> instead of <code>car</code> is because our final
+version of the game has other cars on the road, and we want to specifically
+differentiate the player’s ferrari from the other cars.</em></p>
+</blockquote>
+<p>The <code>Render.player</code> helper ultimately uses the canvas <code>drawImage</code> method to
+render a sprite after scaling it based on the same projection scaling we saw
+earlier:</p>
+<blockquote>
+<p><strong>d</strong>/<strong>z</strong></p>
+</blockquote>
+<p>Where <strong>z</strong> in this case is the relative distance of the car from the camera stored
+in the <strong>playerZ</strong> variable.</p>
+<p>It also ‘bounces’ the car a little at higher speeds by adding a little random-ness
+to the scaling equation based on <strong>speed/maxSpeed</strong>.</p>
+<p>And <strong>boom</strong> there you have it:</p>
+<p><a href="https://codeincomplete.com/games/racer/v1-straight"><img src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/straight.png" alt=""></a></p>
+<h2 id="conclusion">Conclusion</h2>
+<p>Thats actually a fairly large chunk of work already just to get us setup with
+straight roads. We added…</p>
+<ul>
+<li>a common <strong>Dom</strong> helper module</li>
+<li>a common <strong>Util</strong> math helper module</li>
+<li>a common <strong>Render</strong> canvas helper module…</li>
+<li>… including <code>Render.segment</code>, <code>Render.polygon</code> and <code>Render.sprite</code></li>
+<li>a fixed step game loop</li>
+<li>an image loader</li>
+<li>a keyboard handler</li>
+<li>a parallax layered background</li>
+<li>a spritesheet full of cars, trees and billboards</li>
+<li>some rudimentary road geometry</li>
+<li>an <code>update()</code> method to drive a car</li>
+<li>a <code>render()</code> method to render background, road and player car</li>
+<li>an HTML5 <code>&lt;audio&gt;</code> tag with some racing music (a hidden bonus!)</li>
+</ul>
+<p>… but it gives us a good foundation to build on. The next 2 articles, describing
+<a href="https://codeincomplete.com/articles/javascript-racer-v2-curves">curves</a> and <a href="https://codeincomplete.com/articles/javascript-racer-v3-hills">hills</a>
+should be a little easier going, before getting more complex in the last article where
+we add sprites and collision detection.</p>
+<h2 id="related-links">Related Links</h2>
+<ul>
+<li>read more about <a href="https://codeincomplete.com/articles/javascript-racer-v1-straight">v1 - straight roads</a></li>
+<li>read more about <a href="https://codeincomplete.com/articles/javascript-racer-v2-curves">v2 - curves</a></li>
+<li>read more about <a href="https://codeincomplete.com/articles/javascript-racer-v3-hills">v3 - hills</a></li>
+<li>read more about <a href="https://codeincomplete.com/articles/javascript-racer-v4-final">v4 - final</a></li>
+<li>read <a href="http://www.extentofthejam.com/pseudo/">Lou’s Pseudo 3d Page</a></li>
+<li>view the <a href="https://github.com/jakesgordon/javascript-racer/">source code</a></li>
+</ul>
+<p>or you can play…</p>
+<ul>
+<li>the <a href="https://codeincomplete.com/games/racer/v1-straight">straight road demo</a></li>
+<li>the <a href="https://codeincomplete.com/games/racer/v2-curves">curves demo</a></li>
+<li>the <a href="https://codeincomplete.com/games/racer/v3-hills">hills demo</a></li>
+<li>the <a href="https://codeincomplete.com/games/racer">final version</a></li>
+</ul>
+
+  <div id="disqus_thread"><iframe id="dsq-app5110" name="dsq-app5110" allowtransparency="true" scrolling="no" tabindex="0" title="Disqus" style="width: 1px !important; min-width: 100% !important; border: medium none !important; overflow: hidden !important; height: 7883px !important;" src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/a.html" horizontalscrolling="no" verticalscrolling="no" width="100%" frameborder="0"></iframe></div>
+  <script>
+    var disqus_config = function () {
+      this.page.url = 'https:\/\/codeincomplete.com\/articles\/javascript-racer-v1-straight\/';
+      this.page.identifier = 'javascript-racer-v1-straight';
+    };
+    (function() {
+        var d = document, s = d.createElement('script');
+        s.src = 'https:\/\/codeincomplete.disqus.com\/embed.js';
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+    })();
+  </script>
+
+
+</div><div id="footer"><div class="links">
+    <a href="https://codeincomplete.com/" class="">home</a> |
+    <a href="https://codeincomplete.com/articles/" class="selected">articles</a> |
+    <a href="https://codeincomplete.com/games/" class="">games</a> |
+    <a href="https://codeincomplete.com/projects/" class="">projects</a> |
+    <a href="https://codeincomplete.com/about/" class="">about</a>
+  </div>
+
+  <div class="copyright">
+    © 2011-2020 Jake Gordon
+  </div>
+
+</div>
+</div>
+  
+  <script async="" src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/widgets.js" charset="utf-8"></script>
+  <script>(function(d, s, id) {
+    var js, fjs = d.getElementsByTagName(s)[0];
+    if (d.getElementById(id)) return;
+    js = d.createElement(s); js.id = id;
+    js.src = "//connect.facebook.net/en_US/sdk.js#xfbml=1&version=v2.7";
+    fjs.parentNode.insertBefore(js, fjs);
+  }(document, 'script', 'facebook-jssdk'));</script>
+  <script src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/platform.js" async="" defer="defer" gapi_processed="true"></script>
+  
+
+
+
+<iframe name="oauth2relay893292230" id="oauth2relay893292230" src="How%20to%20build%20a%20racing%20game%20-%20straight%20roads%20Code%20inComplete_fichiers/postmessageRelay.html" style="width: 1px; height: 1px; position: absolute; top: -100px;" tabindex="-1" aria-hidden="true"></iframe><iframe style="display: none;"></iframe></body></html>
