@@ -1,6 +1,7 @@
 /* Édition de liens du banc sh2cycles, cache en mode « 2 voies + RAM » :
-   comme bench.ld, mais le code de compose.c (la boucle de rendu) est
-   placé dans la RAM interne du SH2, en C000 0000h (2 Ko au plus).
+   comme bench.ld, mais le code de compose.c (la boucle de rendu) et
+   celui de merge_sh2.S (option SUPERVDP_ASM) sont
+   placés dans la RAM interne du SH2, en C000 0000h (2 Ko au plus).
    Sur la console, le programme le recopiera là au démarrage, après avoir
    mis le cache en mode 2 voies (CCR) ; sous qemu, le segment y est
    chargé directement, mais qemu (mode utilisateur) n'accepte pas
@@ -23,10 +24,11 @@ PHDRS
 SECTIONS
 {
     . = 0x06000000;
-    /* Tout le code en SDRAM, sauf celui de compose.c, qui va en RAM
-       interne ; son code froid (section .text.sdram) reste en SDRAM. */
+    /* Tout le code en SDRAM, sauf celui de compose.c et de l'assembleur
+       du moteur (*_sh2.o), qui va en RAM interne ; le code froid de
+       compose.c (section .text.sdram) reste en SDRAM. */
     .text : {
-        *(EXCLUDE_FILE(*compose.o) .text .text.*)
+        *(EXCLUDE_FILE(*compose.o *_sh2.o) .text .text.*)
         *compose.o(.text.sdram)
     } :sdram
     .rodata : { *(.rodata .rodata.*) } :sdram
@@ -43,6 +45,6 @@ SECTIONS
     .fb : { *(.fb) } :fb
 
     . = RAM_BASE;
-    .ram : { *compose.o(.text .text.*) } :ram
+    .ram : { *compose.o(.text .text.*) *_sh2.o(.text) } :ram
     ASSERT(SIZEOF(.ram) <= 0x800, "le code en RAM interne depasse 2 Ko")
 }

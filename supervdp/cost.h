@@ -56,16 +56,16 @@ typedef struct {
 } ComposeCost;
 
 /* Coûts unitaires, en cycles SH2, hors écritures dans le frame buffer.
-   Étalonnés par tools/sh2cycles (décalage d'écran choisi ligne par ligne,
-   segments formés depuis les changements de classe, cache en 2 voies +
-   RAM). */
+   Étalonnés par tools/sh2cycles sur le code de la console : compose.c
+   compilé avec SUPERVDP_ASM=1 (fusion en assembleur, merge_sh2.S),
+   décalage d'écran choisi ligne par ligne, cache en 2 voies + RAM. */
 #define CYCLES_LINE 0         /* compté dans CYCLES_A_TILE */
-#define CYCLES_A_TILE 5       /* part fixe de la ligne, répartie par tile */
-#define CYCLES_RUN 131        /* segment : formation, choix du chemin */
-#define CYCLES_TILE_CHUNK 72  /* morceau de tile : adresse, cache, boucle */
+#define CYCLES_A_TILE 16      /* part fixe de la ligne, répartie par tile */
+#define CYCLES_RUN 186        /* segment : formation, choix du chemin */
+#define CYCLES_TILE_CHUNK 54  /* morceau de tile : adresse, cache, boucle */
 #define CYCLES_WORD_EVEN 0    /* compté dans les coûts ci-dessus */
-#define CYCLES_WORD_ODD 11    /* surcoût d'un mot source impaire */
-#define CYCLES_WORD_MERGED 38 /* surcoût d'un mot fusionné */
+#define CYCLES_WORD_ODD 2     /* surcoût d'un mot source impaire */
+#define CYCLES_WORD_MERGED 23 /* surcoût d'un mot fusionné */
 
 /* Interruptions du Master, par image : une H_INT par ligne affichée (elle
    écrit le décalage d'écran de la ligne suivante) et une V_INT. Entrée

@@ -52,7 +52,8 @@
      les changements et finit après le dernier ;
    - tiles parcourues par un pointeur sur leur numéro dans le plan, qui
      revient au début de la rangée au bout du plan ;
-   - tiles entières copiées par une suite de 8 mots, sans boucle.
+   - tiles entières copiées par une suite de 8 mots, sans boucle ;
+   - option SUPERVDP_ASM=1 (SH2) : fusion en assembleur (merge_sh2.S).
    ========================================================================= */
 
 /* Fonctions appelées quelques fois par ligne : gardées en un seul
@@ -292,7 +293,8 @@ static void copySpanOdd(Dest d, const PlaneRow *pr, unsigned x, unsigned n,
    On avance par morceaux où ni A ni B ne change de tile : à l'intérieur,
    deux pointeurs, sans test de fin de tile à chaque pixel. Les pixels
    sont réunis deux par deux en mots ; un morceau peut finir sur un pixel
-   de gauche, qui attend alors le pixel suivant ('pending'). */
+   de gauche, qui attend alors le premier pixel du morceau suivant
+   ('pending') ; le reste de ce morceau repart sur des mots entiers. */
 
 typedef struct {
     const uint16_t *cell; /* tile suivante */
@@ -314,9 +316,9 @@ static inline void cursorNextTile(Cursor *c, const PlaneRow *pr) {
     c->left = TILE_SIZE;
 }
 
-ONCE_PER_LINE static void mergeSpan(Dest d, const PlaneRow *pa, unsigned xa,
-                                    const PlaneRow *pb, unsigned xb, unsigned n,
-                                    ComposeCost *cost) {
+ONCE_PER_LINE __attribute__((unused)) static void
+mergeSpan(Dest d, const PlaneRow *pa, unsigned xa, const PlaneRow *pb,
+          unsigned xb, unsigned n, ComposeCost *cost) {
     Cursor a, b;
     cursorAt(&a, pa, xa);
     cursorAt(&b, pb, xb);
@@ -336,33 +338,36 @@ ONCE_PER_LINE static void mergeSpan(Dest d, const PlaneRow *pa, unsigned xa,
         a.src += piece;
         b.src += piece;
 
-        /* Sans pixel en attente : deux pixels à la fois, un mot écrit */
-        if (!hasPending) {
-            for (; piece >= 2; piece -= 2) {
-                unsigned left = srcA[0], right = srcA[1];
-                if (left == 0)
-                    left = srcB[0];
-                if (right == 0)
-                    right = srcB[1];
-                PUT(d, 0, (uint16_t)((left << 8) | right));
-                SKIP(d, 1);
-                srcA += 2;
-                srcB += 2;
-            }
-        }
-        for (; piece > 0; piece--) {
+        /* Un pixel en attente : le premier pixel du morceau complète son
+           mot. Le reste du morceau repart sur des mots entiers. */
+        if (hasPending && piece > 0) {
             unsigned pixel = *srcA++;
             const unsigned back = *srcB++;
             if (pixel == 0)
                 pixel = back;
-            if (hasPending) {
-                PUT(d, 0, (uint16_t)((pending << 8) | pixel));
-                SKIP(d, 1);
-                hasPending = 0;
-            } else {
-                pending = pixel;
-                hasPending = 1;
-            }
+            PUT(d, 0, (uint16_t)((pending << 8) | pixel));
+            SKIP(d, 1);
+            hasPending = 0;
+            piece--;
+        }
+
+        /* Deux pixels à la fois, un mot écrit */
+        for (; piece >= 2; piece -= 2) {
+            unsigned left = srcA[0], right = srcA[1];
+            if (left == 0)
+                left = srcB[0];
+            if (right == 0)
+                right = srcB[1];
+            PUT(d, 0, (uint16_t)((left << 8) | right));
+            SKIP(d, 1);
+            srcA += 2;
+            srcB += 2;
+        }
+
+        /* Un pixel de gauche reste : il attend le morceau suivant */
+        if (piece > 0) {
+            pending = *srcA != 0 ? *srcA : *srcB;
+            hasPending = 1;
         }
 
         if (n == 0)
@@ -378,6 +383,26 @@ ONCE_PER_LINE static void mergeSpan(Dest d, const PlaneRow *pa, unsigned xa,
     }
     /* n étant pair, il ne reste jamais de pixel en attente ici */
 }
+
+/* Option de compilation SUPERVDP_ASM=1 (SH2 seulement) : la fusion passe
+   par merge_sh2.S, même interface et même résultat que mergeSpan, qui
+   reste la référence (et la version de l'hôte). merge_sh2.S lit row,
+   rowEnd et tileLine dans PlaneRow : leurs positions sont vérifiées
+   ici. */
+#if defined(__sh__) && SUPERVDP_ASM
+#include <stddef.h>
+void merge_span_sh2(Dest d, const PlaneRow *pa, unsigned xa, const PlaneRow *pb,
+                    unsigned xb, unsigned n);
+typedef char planeRowLayoutForAsm[offsetof(PlaneRow, row) == 0 &&
+                                          offsetof(PlaneRow, rowEnd) == 4 &&
+                                          offsetof(PlaneRow, tileLine) == 8
+                                      ? 1
+                                      : -1];
+#define MERGE_SPAN(d, pa, xa, pb, xb, n, cost)                                 \
+    merge_span_sh2(d, pa, xa, pb, xb, n)
+#else
+#define MERGE_SPAN mergeSpan
+#endif
 
 /* Un pixel d'un plan, à sa colonne x (x < largeur) */
 static inline unsigned pixelAt(const PlaneRow *pr, unsigned x) {
@@ -566,7 +591,7 @@ int compose_line(uint32_t offset, const Tileset *tiles, const Tilemap *planeA,
             else if (run->rowClass == 0)
                 copyB(DEST(offset + p), &pb, xb, count, cost);
             else
-                mergeSpan(DEST(offset + p), &pa, xa, &pb, xb, count, cost);
+                MERGE_SPAN(DEST(offset + p), &pa, xa, &pb, xb, count, cost);
             p = end;
         }
 

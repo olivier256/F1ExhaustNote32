@@ -100,9 +100,14 @@ chaque ligne) pour la ligne suivante. C'est le Master parce qu'il a la
 priorité sur le bus.
 
 **Code et cache.** Le moteur suppose le cache du SH2 en mode « 2 voies
-+ RAM » : le code chaud de `compose.c` (2 028 octets) dans les 2 Ko de
-RAM interne, son code froid (le mot de frontière, fusionné pixel par
-pixel) en SDRAM. Voir `tools/sh2cycles`.
++ RAM » : le code chaud de `compose.c` dans les 2 Ko de RAM interne, son
+code froid (le mot de frontière, fusionné pixel par pixel) en SDRAM.
+
+**Assembleur SH2.** Compilé pour le SH2 avec `SUPERVDP_ASM=1`, le moteur
+fusionne A et B par `supervdp/merge_sh2.S` (même interface que la
+version C, `mergeSpan`, qui reste la référence et la version de l'hôte ;
+vérifié contre elle par `tools/sh2cycles/test_merge.c`). Code en RAM
+interne : 1 852 octets avec l'assembleur, 2 028 sans. Voir `tools/sh2cycles`.
 
 ## Mesurer : `VDP_STATS=1`
 

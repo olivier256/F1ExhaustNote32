@@ -11,6 +11,12 @@ donc des cycles CPU **estimés**, d'après le modèle de coûts de
    sans les compteurs du modèle : c'est le code qui tournera sur la 32X.
    Il est lié aux adresses de la 32X (`bench.ld`) : code, données, tiles
    et pile en SDRAM (0600 0000h), frame buffer en 2400 0000h.
+   Par défaut avec `SUPERVDP_ASM=1`, comme sur la console : la fusion
+   passe par l'assembleur `supervdp/merge_sh2.S`, placé lui aussi en RAM
+   interne. Avant la mesure, `test_merge.c` vérifie sur SH2 que
+   l'assembleur donne exactement le résultat du C (`mergeSpan`, la
+   référence) : 591 520 cas, gardes du tampon comprises. `ASM=0` : tout
+   en C, pour comparer.
 2. Le programme (`bench.c`) compose les lignes d'un CPU pour 180 images
    (`frames.h` : la trajectoire de la démo, et des défilements
    quelconques). Il tourne sous `qemu-sh4eb`, avec le greffon

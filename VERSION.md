@@ -534,3 +534,101 @@ Retrait de makePair, inutilisée depuis la lecture par mots alignés
 
 clang la signalait (-Wunused-function). Code produit inchangé.
 ```
+
+---
+
+Fusion : morceaux impairs corrigés, version en assembleur SH2 (option SUPERVDP_ASM)
+
+**Ce que fait cette version** :
+- `mergeSpan` (C) : après un morceau impair, tout le morceau suivant
+  passait pixel par pixel (environ 22 instructions par pixel), et le
+  profil en faisait plus de la moitié du temps de la fusion. Désormais,
+  le premier pixel du morceau complète le mot en attente et le reste
+  repart par mots entiers. Fusion : 37 700 instructions par image au lieu
+  de 50 000 sur l'image profilée (xA = 100, xB = 79).
+- `supervdp/merge_sh2.S` : la fusion en assembleur SH2, même interface
+  et même résultat que `mergeSpan`, qui reste la référence et la version
+  de l'hôte. Utilisée quand `compose.c` est compilé pour le SH2 avec
+  `SUPERVDP_ASM=1` ; `compose.c` vérifie à la compilation les positions
+  des champs de `PlaneRow` qu'elle lit. Ce qu'elle gagne sur gcc :
+  - tout l'état dans les registres (gcc rangeait les curseurs dans la
+    pile) : 48 instructions de mise en place par appel au lieu
+    d'environ 70, 17 par morceau au lieu de 35 ;
+  - mot fusionné en 15 instructions, plus une par pixel pris dans B : le
+    pixel de droite est lu par MOV.B @(1,Rm),R0 et seul lui passe par
+    EXTU.B ; les deux créneaux de retard des branchements sont remplis
+    (proposition d'Olivier), sans lire un registre juste après son
+    chargement.
+  Fusion : 27 400 instructions par image au lieu de 37 700.
+- `tools/sh2cycles` :
+  - `test_merge.c` : vérifie sur SH2, sous qemu, l'assembleur contre le
+    C : toutes les colonnes de A x 32 colonnes de B x longueurs de 2 à
+    40 pixels, plus 100 000 cas au hasard ; 591 520 cas, gardes du
+    tampon comprises, sans différence. Une faute volontaire dans
+    l'assembleur donne 313 749 cas faux ;
+  - `run.sh` : assembleur par défaut (`ASM=0` : tout en C), lance
+    `test_merge` avant la mesure ;
+  - `bench_ram.ld` : le code des fichiers `*_sh2.o` va aussi en RAM
+    interne.
+- `cost.h` réétalonné sur la version assembleur, celle de la console
+  (-3 % / +4 %). Il ne sert qu'à l'estimation du simulateur.
+- Code en RAM interne : 1 852 octets (2 028 tout en C).
+- Vérifié : `test_compose`, 1 168 576 lignes sans erreur ; les 5
+  scénarios du simulateur complet identiques à la référence ; sur SH2,
+  pixels identiques à l'hôte, en C comme en assembleur.
+
+**Mesures** (banc, par CPU et par image, hors écritures FB) :
+
+| Version                   | Moyenne | Pire cas | Pire cas + écritures à 5 cycles |
+|---------------------------|---------|----------|---------------------------------|
+| Version précédente        | 276 852 | 315 938  | 405 858 (106 %)                 |
+| C corrigé (`ASM=0`)       | 272 948 | 307 178  | 397 098 (103 %)                 |
+| Assembleur (par défaut)   | 258 651 | 289 706  | 379 626 (99 %)                  |
+
+- avec l'assembleur, le pire cas tient dans l'image même avec des
+  écritures à 5 cycles (FIFO plein) ; à 3 cycles : 343 658, soit 89 % ;
+- selon la parité de xA et xB (moyenne / pire, Master) :
+
+| Parité xA, xB  | Version précédente  | Cette version       |
+|----------------|---------------------|---------------------|
+| pair, pair     | 265 000 / 282 000   | 251 000 / 265 000   |
+| pair, impair   | 285 000 / 315 000   | 264 000 / 283 000   |
+| impair, pair   | 293 000 / 316 000   | 272 000 / 290 000   |
+| impair, impair | 269 000 / 287 000   | 255 000 / 269 000   |
+
+- scénarios du simulateur (modèle étalonné, écritures à 3 cycles) : 0,77
+  à 0,88 image de 1/60 s.
+
+**Ce qui reste pour plus tard** :
+- la part fixe de chaque ligne (environ 230 instructions, hors formation
+  des segments) et `planeRowInit` (environ 40 instructions, deux fois par
+  ligne) ;
+- non modélisé par le banc : le conflit entre lecture d'instruction et
+  accès aux données dans le même cycle ;
+- le coût des interruptions du Master (estimé à 40 cycles) reste à
+  mesurer ;
+- sur la console, la routine H_INT dispose du seul HBlank pour écrire
+  SFT : à vérifier sur un émulateur 32X ;
+- le programme de démarrage SH2 devra mettre le cache en mode 2 voies,
+  recopier le code chaud (compose.c et merge_sh2.S) en C000 0000h, et
+  démasquer V_INT et H_INT sur le Master.
+
+Message de commit proposé :
+
+```
+Fusion : morceaux impairs corrigés, version en assembleur SH2
+
+mergeSpan ne repasse plus pixel par pixel tout un morceau après un
+morceau impair : le premier pixel complète le mot en attente.
+
+supervdp/merge_sh2.S : la fusion en assembleur SH2, même interface et
+même résultat que mergeSpan (la référence), avec SUPERVDP_ASM=1. Tout
+l'état en registres, mot fusionné en 15 instructions, créneaux de retard
+remplis. tools/sh2cycles/test_merge.c la vérifie contre le C sur SH2
+(591 520 cas) ; run.sh l'utilise par défaut (ASM=0 : tout en C).
+cost.h réétalonné sur la version assembleur.
+
+Par CPU et par image, hors écritures FB : 259 000 cycles en moyenne,
+290 000 au pire (277 000 et 316 000 avant) ; le pire cas tient dans
+l'image même avec des écritures à 5 cycles.
+```

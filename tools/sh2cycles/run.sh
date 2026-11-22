@@ -11,6 +11,9 @@
 #    Cache : par défaut en mode « 2 voies + RAM », le code de compose.c
 #    dans la RAM interne (bench_ram.ld), comme le moteur le suppose.
 #    CACHE=4 : cache en 4 voies, tout en SDRAM (bench.ld), pour comparer.
+#    Assembleur : par défaut, compose.c est compilé avec SUPERVDP_ASM=1
+#    (fusion par merge_sh2.S), comme sur la console ; test_merge vérifie
+#    d'abord l'assembleur contre le C. ASM=0 : tout en C, pour comparer.
 # 3. Calcule sur l'hôte les compteurs du modèle pour les mêmes images,
 #    vérifie que le code SH2 dessine les mêmes pixels, et ajuste les
 #    coûts unitaires (fit.py).
@@ -72,9 +75,19 @@ else
 fi
 
 CFLAGS="-m2 -mb -O2 -std=c99 -ffreestanding -fno-builtin -Wall $INC"
-"${SH_ELF}gcc" $CFLAGS -c supervdp/compose.c -o "$OUT/compose.o"
 "${SH_ELF}gcc" $CFLAGS -c "$OUT/demo_assets.c" -o "$OUT/assets.o"
 "${SH_ELF}gcc" -m2 -mb -Wa,--isa=sh2 -c $T/start.S -o "$OUT/start.o"
+ASM_OBJECTS=""
+if [ "${ASM:-1}" = 1 ]; then
+  CFLAGS="$CFLAGS -DSUPERVDP_ASM=1"
+  "${SH_ELF}gcc" -m2 -mb -Wa,--isa=sh2 $INC -c supervdp/merge_sh2.S \
+    -o "$OUT/merge_sh2.o"
+  ASM_OBJECTS="$OUT/merge_sh2.o"
+  echo "Assembleur SH2 : fusion par merge_sh2.S (ASM=0 pour tout en C)"
+else
+  echo "Tout en C (sans SUPERVDP_ASM)"
+fi
+"${SH_ELF}gcc" $CFLAGS -c supervdp/compose.c -o "$OUT/compose.o"
 for cpu in master slave; do
   first=0
   [ $cpu = slave ] && first=1
@@ -84,7 +97,8 @@ for cpu in master slave; do
   # en mémoire page par page.
   "${SH_ELF}gcc" -m2 -mb -nostdlib $LDSCRIPT -Wl,-z,max-page-size=0x1000 \
     -Wl,--no-warn-rwx-segments -o "$OUT/bench_$cpu.elf" \
-    "$OUT/start.o" "$OUT/bench_$cpu.o" "$OUT/compose.o" "$OUT/assets.o" -lgcc
+    "$OUT/start.o" "$OUT/bench_$cpu.o" "$OUT/compose.o" $ASM_OBJECTS \
+    "$OUT/assets.o" -lgcc
 done
 
 # Taille en SDRAM (256 Ko sur 32X) : code + données + tiles + pile ; et
@@ -98,6 +112,19 @@ done
 # ---- Greffon qemu -----------------------------------------------------------
 cc -O2 -shared -fPIC -Wall -I"$QEMU_INCLUDE" $(pkg-config --cflags glib-2.0) \
   -o "$OUT/libsh2cycles.so" $T/sh2cycles_plugin.c
+
+# ---- Assembleur contre C (sans le greffon : seul le résultat compte) -------
+if [ -n "$ASM_OBJECTS" ]; then
+  "${SH_ELF}gcc" $CFLAGS -c $T/test_merge.c -o "$OUT/test_merge.o"
+  "${SH_ELF}gcc" -m2 -mb -nostdlib -T $T/bench_ram.ld \
+    -Wl,--defsym,RAM_BASE=0x50000000 -Wl,-z,max-page-size=0x1000 \
+    -Wl,--no-warn-rwx-segments -o "$OUT/test_merge.elf" "$OUT/start.o" \
+    "$OUT/test_merge.o" $ASM_OBJECTS "$OUT/assets.o" -lgcc
+  if ! "$QEMU" "$OUT/test_merge.elf"; then
+    echo "test_merge : l'assembleur ne donne pas le resultat du C"
+    exit 1
+  fi
+fi
 
 # ---- Mesure -----------------------------------------------------------------
 for cpu in master slave; do
